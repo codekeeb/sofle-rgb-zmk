@@ -24,6 +24,7 @@ import ctypes
 import ctypes.wintypes
 import json
 import logging
+import logging.handlers
 import os
 import struct
 import subprocess
@@ -233,11 +234,16 @@ async def resolve_address(args) -> str:
 
 
 async def run(args) -> None:
-    address = await resolve_address(args)
     loop = asyncio.get_running_loop()
+    address = None
 
     while True:
         try:
+            # Resolver (o re-resolver) la dirección dentro del bucle: al
+            # iniciar sesión el teclado puede no estar disponible aún, y la
+            # identidad BLE de ZMK puede cambiar entre perfiles/reflasheos.
+            if address is None:
+                address = await resolve_address(args)
             LOG.info("Conectando a %s ...", address)
             # use_cached_services=True permite reutilizar la conexión BLE que
             # Windows ya tiene abierta como teclado HID, sin necesidad de que
@@ -267,6 +273,7 @@ async def run(args) -> None:
             if args.once:
                 raise
             LOG.warning("BLE: %s; reintento en 15 s", err)
+            address = None  # re-resolver por si cambió la identidad BLE
             await asyncio.sleep(15)
 
 
@@ -282,9 +289,15 @@ def main() -> None:
     parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args()
 
+    # Log a archivo además de consola: bajo pythonw/tarea programada no hay
+    # consola, y sin esto los fallos son invisibles.
+    log_path = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "claude_usage_daemon.log"
+    file_handler = logging.handlers.RotatingFileHandler(
+        log_path, maxBytes=256 * 1024, backupCount=1, encoding="utf-8")
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO,
                         format="%(asctime)s %(levelname)s %(message)s",
-                        datefmt="%H:%M:%S")
+                        datefmt="%H:%M:%S",
+                        handlers=[logging.StreamHandler(), file_handler])
     try:
         asyncio.run(run(args))
     except KeyboardInterrupt:
