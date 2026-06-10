@@ -80,7 +80,7 @@ py -3 .\claude_usage_daemon.py                    # en marcha (60 s)
 
 | Ruta | Qué es |
 |---|---|
-| `config/west.yml` | Manifest west (ZMK oficial, rama `main`) |
+| `config/west.yml` | Manifest west (ZMK oficial, rama de release `v0.3`) |
 | `config/sofle.conf` | Config común de ambas mitades |
 | `config/sofle_right.conf` | Solo derecha: display + pantalla custom |
 | `config/sofle.overlay` | Nodo devicetree del behavior `claude_usage` |

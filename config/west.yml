@@ -5,7 +5,9 @@ manifest:
   projects:
     - name: zmk
       remote: zmkfirmware
-      revision: main
+      # Rama de release estable: main migró al hardware model v2 de Zephyr
+      # y el board nice_nano_v2 ya no existe con ese nombre allí.
+      revision: v0.3
       import: app/west.yml
   self:
     path: config
