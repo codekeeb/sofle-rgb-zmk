@@ -1,0 +1,8 @@
+# Behavior interno usado como canal de datos central -> periférico para
+# el widget de uso de Claude. No está pensado para usarse en el keymap.
+
+description: Claude usage relay behavior
+
+compatible: "qolera,claude-usage"
+
+include: two_param.yaml

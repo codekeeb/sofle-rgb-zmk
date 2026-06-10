@@ -1,0 +1,26 @@
+config ZMK_CLAUDE_USAGE
+    bool "Claude usage status (host -> teclado por BLE GATT)"
+    depends on BT
+    help
+      Recibe en la mitad central, vía un servicio GATT propio, los
+      porcentajes de uso de Claude (sesión de 5 h y límite semanal)
+      enviados por un daemon en el PC, y los reenvía a la mitad
+      periférica por el enlace split para mostrarlos en su OLED.
+
+if ZMK_CLAUDE_USAGE
+
+config ZMK_CLAUDE_USAGE_WIDGET
+    bool "Widget OLED de uso de Claude"
+    depends on ZMK_DISPLAY && ZMK_DISPLAY_STATUS_SCREEN_CUSTOM
+    default y
+    select LV_USE_BAR
+    select LV_FONT_UNSCII_8
+    help
+      Pantalla de estado personalizada con dos barras de progreso
+      (sesión 5 h y semana) y cuenta atrás hasta cada reinicio.
+
+config ZMK_CLAUDE_USAGE_STALE_TIMEOUT_S
+    int "Segundos sin datos antes de marcar el valor como obsoleto"
+    default 180
+
+endif # ZMK_CLAUDE_USAGE
