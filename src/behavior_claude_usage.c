@@ -42,6 +42,12 @@ static const struct behavior_driver_api behavior_claude_usage_driver_api = {
     .binding_pressed = on_keymap_binding_pressed,
     .binding_released = on_keymap_binding_released,
     .locality = BEHAVIOR_LOCALITY_CENTRAL,
+#if IS_ENABLED(CONFIG_ZMK_BEHAVIOR_METADATA)
+    // Con ZMK Studio activo se compila el sistema de metadata; sin esta
+    // entrada el behavior no aparece bien registrado. No tiene parámetros
+    // editables desde Studio (los rellena el relay), así que va vacío.
+    .get_parameter_metadata = zmk_behavior_get_empty_param_metadata,
+#endif
 };
 
 BEHAVIOR_DT_INST_DEFINE(0, NULL, NULL, NULL, NULL, POST_KERNEL,

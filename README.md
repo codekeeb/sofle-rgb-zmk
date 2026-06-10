@@ -83,9 +83,11 @@ py -3 .\claude_usage_daemon.py                    # en marcha (60 s)
 | Ruta | Qué es |
 |---|---|
 | `config/west.yml` | Manifest west (ZMK oficial, rama de release `v0.3`) |
-| `config/sofle.conf` | Config común de ambas mitades |
+| `config/sofle.conf` | Config común: encoders, RGB underglow, Studio, widget |
 | `config/sofle_right.conf` | Solo derecha: display + pantalla custom |
-| `config/default.overlay` | Behavior `claude_usage` + encoders deshabilitados |
+| `config/sofle.keymap` | Keymap (4 capas, encoders, RGB, Studio unlock) |
+| `config/default.overlay` | Behavior `claude_usage` |
+| `config/boards/nice_nano_v2.overlay` | Cadena WS2812 del RGB underglow (SPI) |
 | `zephyr/module.yml`, `CMakeLists.txt`, `Kconfig` | El repo como módulo ZMK |
 | `src/claude_usage_gatt.c` | Servicio GATT (central) + relay al periférico |
 | `src/behavior_claude_usage.c` | Behavior-canal de datos (ambas mitades) |

@@ -1,10 +1,6 @@
 // Se aplica a ambas mitades. OJO: ZMK solo busca en el config overlays
 // llamados <shield_completo>.overlay (p.ej. sofle_left.overlay),
 // <board>.overlay o default.overlay — "sofle.overlay" NO se carga.
-//
-// Este overlay se procesa ANTES que los archivos del shield, así que no se
-// pueden usar referencias por etiqueta (&sensors); se definen los nodos por
-// ruta y el devicetree los fusiona con los del shield.
 
 / {
     behaviors {
@@ -14,15 +10,5 @@
             compatible = "qolera,claude-usage";
             #binding-cells = <2>;
         };
-    };
-
-    // Sin encoders: con CONFIG_EC11=n no se compila el driver, pero sensors.c
-    // de ZMK referencia los dispositivos del nodo zmk,keymap-sensors del
-    // shield ("/sensors" en sofle.dtsi) y el enlace falla
-    // (__device_dts_ord_NN). Deshabilitarlo elimina ese código. El shield
-    // nunca asigna "status" a este nodo, así que este valor prevalece
-    // aunque el overlay se procese primero.
-    sensors {
-        status = "disabled";
     };
 };
