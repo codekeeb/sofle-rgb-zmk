@@ -1,0 +1,29 @@
+// Se aplica a ambas mitades. OJO: ZMK solo busca en el config overlays
+// llamados <shield_completo>.overlay (p.ej. sofle_left.overlay),
+// <board>.overlay o default.overlay — "sofle.overlay" NO se carga.
+
+/ {
+    behaviors {
+        // Canal de datos central -> periférico del módulo claude-usage; el
+        // nombre del nodo viaja por el enlace split (límite 16 caracteres).
+        claude_usage: claude_usage {
+            compatible = "qolera,claude-usage";
+            #binding-cells = <2>;
+        };
+    };
+};
+
+// Sin encoders: con CONFIG_EC11=n no se compila el driver, pero sensors.c
+// de ZMK sigue referenciando los dispositivos del nodo keymap-sensors y el
+// enlace falla (__device_dts_ord_NN). Deshabilitar el nodo elimina ese código.
+&sensors {
+    status = "disabled";
+};
+
+&left_encoder {
+    status = "disabled";
+};
+
+&right_encoder {
+    status = "disabled";
+};

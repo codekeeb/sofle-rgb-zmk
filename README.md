@@ -28,7 +28,9 @@ claude_usage_daemon.py  ──BLE──▶  servicio GATT propio   ──split�
   con ZMK main, sin forks.
 - El canal central→periférico reutiliza el comando *invoke behavior* del
   transporte split: el estado viaja empaquetado en los dos `uint32` de
-  parámetros del behavior `claude_usage` (definido en `config/sofle.overlay`).
+  parámetros del behavior `claude_usage` (definido en `config/default.overlay`;
+  ZMK no carga overlays llamados `sofle.overlay` desde el config, solo
+  `<shield_completo>.overlay`, `<board>.overlay` o `default.overlay`).
 - Paquete BLE (característica `c1a0de01-2b5e-4f0c-9c8a-3f2a1d4e5b6c`, 6 bytes
   little-endian): `u8 pct_sesion, u8 pct_semana, u16 min_reset_sesion,
   u16 min_reset_semana` (0xFF/0xFFFF = desconocido).
@@ -83,7 +85,7 @@ py -3 .\claude_usage_daemon.py                    # en marcha (60 s)
 | `config/west.yml` | Manifest west (ZMK oficial, rama de release `v0.3`) |
 | `config/sofle.conf` | Config común de ambas mitades |
 | `config/sofle_right.conf` | Solo derecha: display + pantalla custom |
-| `config/sofle.overlay` | Nodo devicetree del behavior `claude_usage` |
+| `config/default.overlay` | Behavior `claude_usage` + encoders deshabilitados |
 | `zephyr/module.yml`, `CMakeLists.txt`, `Kconfig` | El repo como módulo ZMK |
 | `src/claude_usage_gatt.c` | Servicio GATT (central) + relay al periférico |
 | `src/behavior_claude_usage.c` | Behavior-canal de datos (ambas mitades) |
