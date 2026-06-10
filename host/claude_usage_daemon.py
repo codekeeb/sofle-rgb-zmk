@@ -239,7 +239,11 @@ async def run(args) -> None:
     while True:
         try:
             LOG.info("Conectando a %s ...", address)
-            async with BleakClient(address) as client:
+            # use_cached_services=True permite reutilizar la conexión BLE que
+            # Windows ya tiene abierta como teclado HID, sin necesidad de que
+            # el dispositivo esté anunciándose o desconectado.
+            async with BleakClient(address,
+                                   winrt={"use_cached_services": True}) as client:
                 LOG.info("Conectado")
                 while True:
                     payload = await loop.run_in_executor(None, fetch_usage_payload)
