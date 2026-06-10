@@ -13,7 +13,10 @@ config ZMK_CLAUDE_USAGE_WIDGET
     bool "Widget OLED de uso de Claude"
     depends on ZMK_DISPLAY && ZMK_DISPLAY_STATUS_SCREEN_CUSTOM
     default y
+    # Con pantalla custom, ZMK no activa widgets de LVGL: hay que
+    # seleccionar aquí cada uno que se use o el enlace falla (lv_label_*...)
     select LV_USE_BAR
+    select LV_USE_LABEL
     select LV_FONT_UNSCII_8
     help
       Pantalla de estado personalizada con dos barras de progreso
