@@ -4,4 +4,6 @@ on: [push, pull_request, workflow_dispatch]
 
 jobs:
   build:
-    uses: zmkfirmware/zmk/.github/workflows/build-user-config.yml@main
+    # Anclado a v0.3 igual que west.yml: el workflow de main añade un chequeo
+    # (CONFIG_ZMK_BOARD_COMPAT / west boards) incompatible con Zephyr 3.5.
+    uses: zmkfirmware/zmk/.github/workflows/build-user-config.yml@v0.3
