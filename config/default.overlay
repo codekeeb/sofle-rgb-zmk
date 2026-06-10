@@ -4,9 +4,12 @@
 
 / {
     behaviors {
-        // Canal de datos central -> periférico del módulo claude-usage; el
-        // nombre del nodo viaja por el enlace split (límite 16 caracteres).
-        claude_usage: claude_usage {
+        // Canal de datos central -> periférico del módulo claude-usage.
+        // OJO: el nombre del nodo viaja por el enlace split BLE y su payload
+        // solo admite 8 caracteres + nulo (ZMK_SPLIT_RUN_BEHAVIOR_DEV_LEN=9);
+        // con un nombre más largo la central lo trunca y el periférico no
+        // encuentra el behavior (falla en silencio).
+        cldusage: cldusage {
             compatible = "qolera,claude-usage";
             #binding-cells = <2>;
         };

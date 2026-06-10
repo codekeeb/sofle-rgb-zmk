@@ -28,9 +28,11 @@ claude_usage_daemon.py  ──BLE──▶  servicio GATT propio   ──split�
   con ZMK main, sin forks.
 - El canal central→periférico reutiliza el comando *invoke behavior* del
   transporte split: el estado viaja empaquetado en los dos `uint32` de
-  parámetros del behavior `claude_usage` (definido en `config/default.overlay`;
+  parámetros del behavior `cldusage` (definido en `config/default.overlay`;
   ZMK no carga overlays llamados `sofle.overlay` desde el config, solo
   `<shield_completo>.overlay`, `<board>.overlay` o `default.overlay`).
+  El nombre del nodo debe tener **como máximo 8 caracteres**: el payload BLE
+  del split lo trunca a 8+nulo y el periférico no encontraría el behavior.
 - Paquete BLE (característica `c1a0de01-2b5e-4f0c-9c8a-3f2a1d4e5b6c`, 6 bytes
   little-endian): `u8 pct_sesion, u8 pct_semana, u16 min_reset_sesion,
   u16 min_reset_semana` (0xFF/0xFFFF = desconocido).
