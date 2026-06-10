@@ -2,6 +2,8 @@ manifest:
   remotes:
     - name: zmkfirmware
       url-base: https://github.com/zmkfirmware
+    - name: mctechnology17
+      url-base: https://github.com/mctechnology17
   projects:
     - name: zmk
       remote: zmkfirmware
@@ -9,5 +11,10 @@ manifest:
       # y el board nice_nano_v2 ya no existe con ese nombre allí.
       revision: v0.3
       import: app/west.yml
+    - name: zmk-nice-oled
+      remote: mctechnology17
+      # Pantalla animada de la mitad izquierda. Rama compatible con
+      # ZMK v0.3 / LVGL 8 (main del módulo apunta a ZMK main / LVGL 9).
+      revision: v0.3/dev
   self:
     path: config

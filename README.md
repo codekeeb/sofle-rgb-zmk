@@ -84,9 +84,10 @@ py -3 .\claude_usage_daemon.py                    # en marcha (60 s)
 
 | Ruta | Qué es |
 |---|---|
-| `config/west.yml` | Manifest west (ZMK oficial, rama de release `v0.3`) |
+| `config/west.yml` | Manifest west (ZMK `v0.3` + módulo `zmk-nice-oled` rama `v0.3/dev`) |
 | `config/sofle.conf` | Config común: encoders, RGB underglow, Studio, widget |
-| `config/sofle_right.conf` | Solo derecha: display + pantalla custom |
+| `config/sofle_left.conf` | Solo izquierda: pantalla nice_oled (widget Claude off) |
+| `config/sofle_right.conf` | Solo derecha: display + pantalla custom del widget |
 | `config/sofle.keymap` | Keymap (4 capas, encoders, RGB, Studio unlock) |
 | `config/default.overlay` | Behavior `claude_usage` |
 | `config/boards/nice_nano_v2.overlay` | Cadena WS2812 del RGB underglow (SPI) |

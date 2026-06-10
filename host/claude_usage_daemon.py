@@ -242,8 +242,19 @@ async def run(args) -> None:
             # use_cached_services=True permite reutilizar la conexión BLE que
             # Windows ya tiene abierta como teclado HID, sin necesidad de que
             # el dispositivo esté anunciándose o desconectado.
-            async with BleakClient(address,
-                                   winrt={"use_cached_services": True}) as client:
+            # address_type="random": ZMK usa direcciones random estáticas.
+            client = BleakClient(address,
+                                 winrt={"use_cached_services": True,
+                                        "address_type": "random"})
+            # bleak (WinRT) escanea buscando el anuncio antes de conectar,
+            # pero un dispositivo ya conectado a Windows no se anuncia.
+            # Inyectar la dirección como _device_info salta ese escaneo y
+            # conecta directamente sobre el enlace existente.
+            try:
+                client._backend._device_info = int(address.replace(":", ""), 16)
+            except (AttributeError, ValueError):
+                pass  # otro backend u otra versión de bleak: dejar el flujo normal
+            async with client:
                 LOG.info("Conectado")
                 while True:
                     payload = await loop.run_in_executor(None, fetch_usage_payload)
