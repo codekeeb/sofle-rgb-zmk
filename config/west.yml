@@ -4,6 +4,8 @@ manifest:
       url-base: https://github.com/zmkfirmware
     - name: mctechnology17
       url-base: https://github.com/mctechnology17
+    - name: urob
+      url-base: https://github.com/urob
   projects:
     - name: zmk
       remote: zmkfirmware
@@ -16,5 +18,10 @@ manifest:
       # Pantalla animada de la mitad izquierda. Rama compatible con
       # ZMK v0.3 / LVGL 8 (main del módulo apunta a ZMK main / LVGL 9).
       revision: v0.3/dev
+    - name: zmk-helpers
+      remote: urob
+      # Macros del keymap (ZMK_UNICODE_*). Tag emparejado con ZMK v0.3.
+      # Sustituye al antiguo zmk-nodefree-config (mismo autor, reestructurado).
+      revision: v0.3
   self:
     path: config

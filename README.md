@@ -88,7 +88,7 @@ py -3 .\claude_usage_daemon.py                    # en marcha (60 s)
 | `config/sofle.conf` | Config común: encoders, RGB underglow, Studio, widget |
 | `config/sofle_left.conf` | Solo izquierda: pantalla nice_oled (widget Claude off) |
 | `config/sofle_right.conf` | Solo derecha: display + pantalla custom del widget |
-| `config/sofle.keymap` | Keymap (4 capas, encoders, RGB, Studio unlock) |
+| `config/sofle.keymap` | Keymap ADEU (4 capas, unicode €/ñ vía zmk-helpers + WinCompose, encoders RGB/volumen) |
 | `config/default.overlay` | Behavior `claude_usage` |
 | `config/boards/nice_nano_v2.overlay` | Cadena WS2812 del RGB underglow (SPI) |
 | `zephyr/module.yml`, `CMakeLists.txt`, `Kconfig` | El repo como módulo ZMK |
