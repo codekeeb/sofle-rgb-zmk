@@ -329,7 +329,8 @@ def _address_from_windows_pnp(name: str) -> str | None:
             ["powershell", "-NoProfile", "-Command",
              f"Get-PnpDevice -Class Bluetooth | Where-Object {{ $_.FriendlyName -like '{name}*' }} "
              "| Select-Object -ExpandProperty InstanceId"],
-            capture_output=True, text=True, timeout=30, check=False)
+            capture_output=True, text=True, timeout=30, check=False,
+            creationflags=subprocess.CREATE_NO_WINDOW)
     except (OSError, subprocess.TimeoutExpired):
         return None
     for line in out.stdout.splitlines():
