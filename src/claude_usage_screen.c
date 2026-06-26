@@ -1,15 +1,17 @@
 /*
- * Pantalla de estado personalizada para la OLED del Sofle, en vertical
- * (32x128: la pantalla nativa 128x32 se rota 90 grados por software).
+ * Pantalla de estado personalizada para la OLED del Sofle.
  *
- * Distribución de arriba a abajo:
- *   - bicho de Claude Code (pixel art 1 bit)
- *   - "5H" + batería segmentada (se llena con el uso) + % + cuenta atrás
+ * La OLED es 128x32 nativa (horizontal). En lugar de rotar el display por
+ * software (LVGL lo ignora en ZMK v0.3 porque la rotación llega tarde y el
+ * driver SSD1306 no la reconfigura), rotamos NOSOTROS cada elemento 90°:
+ * el contenido se diseña "a lo alto" y cada objeto se gira para que, con la
+ * pantalla montada en vertical, se lea correctamente de arriba a abajo.
+ *
+ * Distribución lógica (vertical, 32 ancho x 128 alto):
+ *   - bicho de Claude Code
+ *   - "5H" + batería segmentada + % + cuenta atrás
  *   - separador
  *   - "7D" + batería segmentada + %
- *
- * Si no llegan datos en ZMK_CLAUDE_USAGE_STALE_TIMEOUT_S, los textos
- * vuelven a "--" (las barras conservan el último valor).
  */
 
 #include <stdio.h>
@@ -21,11 +23,11 @@
 #include <zmk/display/status_screen.h>
 #include <zmk_claude_usage/claude_usage.h>
 
-/* Lienzo lógico tras rotar 90 grados. */
-#define SCR_W 32
-#define SCR_H 128
+/* Pantalla física. */
+#define PHYS_W 128
+#define PHYS_H 32
 
-/* Bicho de Claude Code, 24x16, 1 bit (MSB-first). Generado a mano. */
+/* Bicho de Claude Code, 24x16, 1 bit (MSB-first). */
 #define GHOST_W 24
 #define GHOST_H 16
 static const uint8_t ghost_map[] = {
@@ -47,7 +49,6 @@ static const uint8_t ghost_map[] = {
     0x00, 0x00, 0x00,
 };
 
-/* Descriptor de imagen LVGL 8: 1 bit con alpha (1 = pixel blanco). */
 static const lv_img_dsc_t ghost_img = {
     .header.cf = LV_IMG_CF_ALPHA_1BIT,
     .header.always_zero = 0,
@@ -57,8 +58,17 @@ static const lv_img_dsc_t ghost_img = {
     .data = ghost_map,
 };
 
-/* Número de segmentos de cada batería. */
 #define BAR_SEGMENTS 10
+
+/*
+ * Mapeo lógico->físico (rotación 90° horaria del contenido).
+ * Lienzo lógico: lx en [0,32), ly en [0,128) (32 ancho, 128 alto).
+ * Físico: px en [0,128), py en [0,32).
+ *   px = ly
+ *   py = (32 - 1) - lx
+ * El elemento se coloca por su esquina; como además rotamos el objeto 90°,
+ * posicionamos por el punto que tras rotar queda donde toca (ver helpers).
+ */
 
 static struct zmk_claude_usage_state current_state = {
     .session_pct = ZMK_CLAUDE_USAGE_PCT_UNKNOWN,
@@ -69,7 +79,6 @@ static struct zmk_claude_usage_state current_state = {
 static bool stale = true;
 static struct k_spinlock state_lock;
 
-/* Objetos de la pantalla. */
 static lv_obj_t *session_segs[BAR_SEGMENTS];
 static lv_obj_t *weekly_segs[BAR_SEGMENTS];
 static lv_obj_t *session_pct_label;
@@ -97,12 +106,10 @@ static void format_reset(char *buf, size_t size, uint16_t minutes) {
     }
 }
 
-/* Pinta una batería: los segmentos se llenan de abajo a arriba según el
- * uso. segs[0] es el de más abajo. */
 static void apply_battery(lv_obj_t *const segs[], uint8_t pct) {
     int filled = (pct == ZMK_CLAUDE_USAGE_PCT_UNKNOWN)
                      ? 0
-                     : (pct * BAR_SEGMENTS + 50) / 100; /* redondeo */
+                     : (pct * BAR_SEGMENTS + 50) / 100;
     for (int i = 0; i < BAR_SEGMENTS; i++) {
         lv_opa_t opa = (i < filled) ? LV_OPA_COVER : LV_OPA_TRANSP;
         lv_obj_set_style_bg_opa(segs[i], opa, LV_PART_MAIN);
@@ -124,7 +131,6 @@ static void update_ui_cb(struct k_work *work) {
 
     char buf[8];
 
-    /* Las barras conservan el último valor aunque esté stale. */
     apply_battery(session_segs, state.session_pct);
     apply_battery(weekly_segs, state.weekly_pct);
 
@@ -166,25 +172,53 @@ void zmk_claude_usage_widget_update(struct zmk_claude_usage_state state) {
     }
 }
 
-static lv_obj_t *make_text(lv_obj_t *parent, int y, const char *init) {
+/*
+ * Crea una etiqueta rotada 90° horaria. (lx, ly) es la esquina superior
+ * izquierda en el lienzo lógico vertical; w_log y h_log su tamaño lógico.
+ * Tras rotar, posicionamos el objeto en coordenadas físicas.
+ *
+ * Una etiqueta de tamaño w_log x h_log, rotada 90° horaria sobre su pivote
+ * (0,0), ocupa físicamente: su ancho lógico pasa a alto y viceversa. Para
+ * que la esquina lógica (lx,ly) caiga en la física correcta, colocamos el
+ * objeto en physical (ly, PHYS_H-1-lx-... ) y dejamos que LVGL lo dibuje
+ * con el transform. Usamos pivote centrado y ajustamos por traslación.
+ */
+static lv_obj_t *make_label_rot(lv_obj_t *parent, int lx, int ly, int w_log,
+                                const char *init) {
     lv_obj_t *lbl = lv_label_create(parent);
     lv_obj_set_style_text_font(lbl, &lv_font_unscii_8, LV_PART_MAIN);
-    lv_obj_set_width(lbl, SCR_W);
+    lv_obj_set_width(lbl, w_log);
     lv_obj_set_style_text_align(lbl, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-    lv_obj_set_pos(lbl, 0, y);
     lv_label_set_text(lbl, init);
+
+    /* Rotar 90° horaria sobre el origen (0,0) de la etiqueta. */
+    lv_obj_set_style_transform_pivot_x(lbl, 0, LV_PART_MAIN);
+    lv_obj_set_style_transform_pivot_y(lbl, 0, LV_PART_MAIN);
+    lv_obj_set_style_transform_angle(lbl, 900, LV_PART_MAIN); /* 90.0° */
+
+    /* Tras rotar 90° horaria con pivote (0,0): un punto lógico (u,v) de la
+     * etiqueta cae en (-v, u) relativo al origen. Para que la esquina lógica
+     * superior-izquierda quede arriba a la izquierda en físico, trasladamos.
+     * La esquina superior-derecha de la etiqueta (w_log,0) va a (0,w_log).
+     * Colocamos el objeto en físico: px = ly, py = (PHYS_H - 1 - lx). */
+    lv_obj_set_pos(lbl, ly, (PHYS_H - 1) - lx);
     return lbl;
 }
 
-/* Crea una batería segmentada: marco + BAR_SEGMENTS bloques apilados.
- * Devuelve por seg_out[] los segmentos de abajo (idx 0) a arriba. */
-static void make_battery(lv_obj_t *parent, int x, int y, int w, int seg_h, int gap,
+/* Batería segmentada en el lienzo lógico vertical. Cada segmento es un
+ * lv_obj rectangular; los posicionamos directamente en coordenadas físicas
+ * porque los rectángulos no necesitan rotar (son simétricos), solo mapear:
+ *   un bloque lógico en (lx,ly) de tamaño (lw,lh) ->
+ *   físico en (px=ly, py=PHYS_H-1-(lx+lw-1)) de tamaño (lh, lw). */
+static void make_battery(lv_obj_t *parent, int lx, int ly, int lw, int seg_h, int gap,
                          lv_obj_t *seg_out[]) {
-    int total_h = BAR_SEGMENTS * seg_h + (BAR_SEGMENTS - 1) * gap;
+    /* Marco: lógico lw x (10*seg_h + 9*gap + 4). */
+    int frame_lh = BAR_SEGMENTS * seg_h + (BAR_SEGMENTS - 1) * gap + 4;
 
     lv_obj_t *frame = lv_obj_create(parent);
-    lv_obj_set_size(frame, w, total_h + 4);
-    lv_obj_set_pos(frame, x, y);
+    /* físico: ancho = frame_lh, alto = lw */
+    lv_obj_set_size(frame, frame_lh, lw);
+    lv_obj_set_pos(frame, ly, (PHYS_H - 1) - (lx + lw - 1));
     lv_obj_set_scrollbar_mode(frame, LV_SCROLLBAR_MODE_OFF);
     lv_obj_set_style_radius(frame, 0, LV_PART_MAIN);
     lv_obj_set_style_bg_opa(frame, LV_OPA_TRANSP, LV_PART_MAIN);
@@ -192,13 +226,14 @@ static void make_battery(lv_obj_t *parent, int x, int y, int w, int seg_h, int g
     lv_obj_set_style_border_color(frame, lv_color_white(), LV_PART_MAIN);
     lv_obj_set_style_pad_all(frame, 1, LV_PART_MAIN);
 
-    int inner_w = w - 4;
+    int inner_w = lw - 4; /* grosor del segmento (físico = alto del bloque) */
     for (int i = 0; i < BAR_SEGMENTS; i++) {
         lv_obj_t *seg = lv_obj_create(frame);
-        lv_obj_set_size(seg, inner_w, seg_h);
-        /* idx 0 = abajo del todo, por eso invertimos la posición vertical. */
-        int sy = (BAR_SEGMENTS - 1 - i) * (seg_h + gap);
-        lv_obj_set_pos(seg, 0, sy);
+        /* En el marco rotado: el eje "largo" físico es horizontal. idx 0 = más
+         * cerca del reset (abajo lógico = derecha física del marco). */
+        lv_obj_set_size(seg, seg_h, inner_w);
+        int sx = i * (seg_h + gap); /* avanza por el eje largo (físico x) */
+        lv_obj_set_pos(seg, sx, 0);
         lv_obj_set_scrollbar_mode(seg, LV_SCROLLBAR_MODE_OFF);
         lv_obj_set_style_radius(seg, 0, LV_PART_MAIN);
         lv_obj_set_style_border_width(seg, 0, LV_PART_MAIN);
@@ -212,53 +247,51 @@ lv_obj_t *zmk_display_status_screen(void) {
     lv_obj_t *screen = lv_obj_create(NULL);
     lv_obj_set_scrollbar_mode(screen, LV_SCROLLBAR_MODE_OFF);
 
-    /* Rotación 90 grados: la OLED es 128x32 nativa, la queremos 32x128. */
-    lv_disp_t *disp = lv_disp_get_default();
-    if (disp != NULL) {
-        lv_disp_set_rotation(disp, LV_DISP_ROT_90);
-    }
-
-    /* Alto de batería: 10 segmentos de 2px + 9 huecos de 1px + 4 de marco/pad. */
     const int seg_h = 2, seg_gap = 1;
-    const int bat_h = BAR_SEGMENTS * seg_h + (BAR_SEGMENTS - 1) * seg_gap + 4; /* 33 */
+    const int bat_lh = BAR_SEGMENTS * seg_h + (BAR_SEGMENTS - 1) * seg_gap + 4; /* 33 */
 
-    int y = 0;
+    int ly = 0; /* avance vertical lógico (0 arriba .. 127 abajo) */
 
-    /* Bicho centrado arriba. */
+    /* Bicho centrado horizontalmente en el lienzo lógico (ancho 32). */
     lv_obj_t *ghost = lv_img_create(screen);
     lv_img_set_src(ghost, &ghost_img);
     lv_obj_set_style_img_recolor(ghost, lv_color_white(), LV_PART_MAIN);
     lv_obj_set_style_img_recolor_opa(ghost, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_pos(ghost, (SCR_W - GHOST_W) / 2, y);
-    y += GHOST_H; /* 16 */
+    /* Rotar la imagen 90° horaria. */
+    lv_img_set_pivot(ghost, 0, 0);
+    lv_img_set_angle(ghost, 900);
+    /* lógico (lx=(32-GHOST_W)/2, ly): físico px=ly, py=PHYS_H-1-lx-... */
+    int gx = (PHYS_H - GHOST_W) / 2; /* centrado en los 32 lógicos */
+    lv_obj_set_pos(ghost, ly + GHOST_H, (PHYS_H - 1) - gx);
+    ly += GHOST_H + 1;
 
-    /* --- Bloque 5H --- */
-    make_text(screen, y, "5H");
-    y += 8;
-    make_battery(screen, 6, y, 20, seg_h, seg_gap, session_segs);
-    y += bat_h;
-    session_pct_label = make_text(screen, y, "--%");
-    y += 8;
-    session_reset_label = make_text(screen, y, "--");
-    y += 9;
+    /* --- 5H --- */
+    make_label_rot(screen, 4, ly, 24, "5H");
+    ly += 9;
+    make_battery(screen, 6, ly, 20, seg_h, seg_gap, session_segs);
+    ly += bat_lh + 1;
+    session_pct_label = make_label_rot(screen, 2, ly, 28, "--%");
+    ly += 9;
+    session_reset_label = make_label_rot(screen, 2, ly, 28, "--");
+    ly += 9;
 
-    /* --- Separador --- */
+    /* --- separador (línea lógica horizontal = vertical física) --- */
     lv_obj_t *sep = lv_obj_create(screen);
-    lv_obj_set_size(sep, SCR_W - 8, 1);
-    lv_obj_set_pos(sep, 4, y);
+    lv_obj_set_size(sep, 1, PHYS_H - 8); /* físico: 1 ancho, casi todo el alto */
+    lv_obj_set_pos(sep, ly, 4);
     lv_obj_set_scrollbar_mode(sep, LV_SCROLLBAR_MODE_OFF);
     lv_obj_set_style_radius(sep, 0, LV_PART_MAIN);
     lv_obj_set_style_border_width(sep, 0, LV_PART_MAIN);
     lv_obj_set_style_bg_color(sep, lv_color_white(), LV_PART_MAIN);
     lv_obj_set_style_bg_opa(sep, LV_OPA_COVER, LV_PART_MAIN);
-    y += 3;
+    ly += 3;
 
-    /* --- Bloque 7D --- */
-    make_text(screen, y, "7D");
-    y += 8;
-    make_battery(screen, 6, y, 20, seg_h, seg_gap, weekly_segs);
-    y += bat_h;
-    weekly_pct_label = make_text(screen, y, "--%");
+    /* --- 7D --- */
+    make_label_rot(screen, 4, ly, 24, "7D");
+    ly += 9;
+    make_battery(screen, 6, ly, 20, seg_h, seg_gap, weekly_segs);
+    ly += bat_lh + 1;
+    weekly_pct_label = make_label_rot(screen, 2, ly, 28, "--%");
 
     ui_ready = true;
     return screen;
