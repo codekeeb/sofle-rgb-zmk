@@ -14,8 +14,9 @@ config ZMK_CLAUDE_USAGE_WIDGET
     depends on ZMK_DISPLAY && ZMK_DISPLAY_STATUS_SCREEN_CUSTOM
     default y
     # Con pantalla custom, ZMK no activa widgets de LVGL: hay que
-    # seleccionar aquí cada uno que se use o el enlace falla (lv_label_*...)
-    select LV_USE_LABEL
+    # seleccionar aquí cada uno que se use o el enlace falla.
+    # Dibujamos en un canvas y lo rotamos 90° (técnica de nice_oled).
+    select LV_USE_CANVAS
     select LV_USE_IMG
     select LV_FONT_UNSCII_8
     help
