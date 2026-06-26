@@ -94,6 +94,6 @@ py -3 .\claude_usage_daemon.py                    # en marcha (60 s)
 | `zephyr/module.yml`, `CMakeLists.txt`, `Kconfig` | El repo como módulo ZMK |
 | `src/claude_usage_gatt.c` | Servicio GATT (central) + relay al periférico |
 | `src/behavior_claude_usage.c` | Behavior-canal de datos (ambas mitades) |
-| `src/claude_usage_screen.c` | Widget LVGL / pantalla de estado (derecha) |
+| `src/claude_usage_screen.c` | Widget LVGL vertical (bicho + baterías) (derecha) |
 | `dts/bindings/behaviors/qolera,claude-usage.yaml` | Binding del behavior |
 | `host/claude_usage_daemon.py` | Daemon de Windows |

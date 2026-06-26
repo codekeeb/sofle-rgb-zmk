@@ -1,8 +1,15 @@
 /*
- * Pantalla de estado personalizada (OLED 128x32) con el uso de Claude:
- * dos filas (sesión de 5 h y semana) con barra de progreso, porcentaje
- * y cuenta atrás hasta el reinicio. Si no llegan datos en
- * ZMK_CLAUDE_USAGE_STALE_TIMEOUT_S, los textos vuelven a "--".
+ * Pantalla de estado personalizada para la OLED del Sofle, en vertical
+ * (32x128: la pantalla nativa 128x32 se rota 90 grados por software).
+ *
+ * Distribución de arriba a abajo:
+ *   - bicho de Claude Code (pixel art 1 bit)
+ *   - "5H" + batería segmentada (se llena con el uso) + % + cuenta atrás
+ *   - separador
+ *   - "7D" + batería segmentada + %
+ *
+ * Si no llegan datos en ZMK_CLAUDE_USAGE_STALE_TIMEOUT_S, los textos
+ * vuelven a "--" (las barras conservan el último valor).
  */
 
 #include <stdio.h>
@@ -14,6 +21,45 @@
 #include <zmk/display/status_screen.h>
 #include <zmk_claude_usage/claude_usage.h>
 
+/* Lienzo lógico tras rotar 90 grados. */
+#define SCR_W 32
+#define SCR_H 128
+
+/* Bicho de Claude Code, 24x16, 1 bit (MSB-first). Generado a mano. */
+#define GHOST_W 24
+#define GHOST_H 16
+static const uint8_t ghost_map[] = {
+    0x00, 0x00, 0x00,
+    0x7f, 0xff, 0xfe,
+    0x7f, 0xff, 0xfe,
+    0x7f, 0xff, 0xfe,
+    0x7e, 0x3c, 0x7e,
+    0x7e, 0x3c, 0x7e,
+    0x7e, 0x3c, 0x7e,
+    0x7f, 0xff, 0xfe,
+    0xff, 0xff, 0xff,
+    0xff, 0xff, 0xff,
+    0x7f, 0xff, 0xfe,
+    0x7f, 0xff, 0xfe,
+    0x18, 0x66, 0x18,
+    0x18, 0x66, 0x18,
+    0x18, 0x66, 0x18,
+    0x00, 0x00, 0x00,
+};
+
+/* Descriptor de imagen LVGL 8: 1 bit con alpha (1 = pixel blanco). */
+static const lv_img_dsc_t ghost_img = {
+    .header.cf = LV_IMG_CF_ALPHA_1BIT,
+    .header.always_zero = 0,
+    .header.w = GHOST_W,
+    .header.h = GHOST_H,
+    .data_size = sizeof(ghost_map),
+    .data = ghost_map,
+};
+
+/* Número de segmentos de cada batería. */
+#define BAR_SEGMENTS 10
+
 static struct zmk_claude_usage_state current_state = {
     .session_pct = ZMK_CLAUDE_USAGE_PCT_UNKNOWN,
     .weekly_pct = ZMK_CLAUDE_USAGE_PCT_UNKNOWN,
@@ -23,12 +69,13 @@ static struct zmk_claude_usage_state current_state = {
 static bool stale = true;
 static struct k_spinlock state_lock;
 
-static lv_obj_t *session_bar;
-static lv_obj_t *weekly_bar;
+/* Objetos de la pantalla. */
+static lv_obj_t *session_segs[BAR_SEGMENTS];
+static lv_obj_t *weekly_segs[BAR_SEGMENTS];
 static lv_obj_t *session_pct_label;
-static lv_obj_t *weekly_pct_label;
 static lv_obj_t *session_reset_label;
-static lv_obj_t *weekly_reset_label;
+static lv_obj_t *weekly_pct_label;
+static bool ui_ready;
 
 static void format_pct(char *buf, size_t size, uint8_t pct) {
     if (pct == ZMK_CLAUDE_USAGE_PCT_UNKNOWN) {
@@ -50,21 +97,20 @@ static void format_reset(char *buf, size_t size, uint16_t minutes) {
     }
 }
 
-static void apply_row(lv_obj_t *bar, lv_obj_t *pct_label, lv_obj_t *reset_label, uint8_t pct,
-                      uint16_t reset_min, bool is_stale) {
-    char buf[8];
-
-    lv_bar_set_value(bar, pct == ZMK_CLAUDE_USAGE_PCT_UNKNOWN ? 0 : pct, LV_ANIM_OFF);
-
-    format_pct(buf, sizeof(buf), is_stale ? ZMK_CLAUDE_USAGE_PCT_UNKNOWN : pct);
-    lv_label_set_text(pct_label, buf);
-
-    format_reset(buf, sizeof(buf), is_stale ? ZMK_CLAUDE_USAGE_MIN_UNKNOWN : reset_min);
-    lv_label_set_text(reset_label, buf);
+/* Pinta una batería: los segmentos se llenan de abajo a arriba según el
+ * uso. segs[0] es el de más abajo. */
+static void apply_battery(lv_obj_t *const segs[], uint8_t pct) {
+    int filled = (pct == ZMK_CLAUDE_USAGE_PCT_UNKNOWN)
+                     ? 0
+                     : (pct * BAR_SEGMENTS + 50) / 100; /* redondeo */
+    for (int i = 0; i < BAR_SEGMENTS; i++) {
+        lv_opa_t opa = (i < filled) ? LV_OPA_COVER : LV_OPA_TRANSP;
+        lv_obj_set_style_bg_opa(segs[i], opa, LV_PART_MAIN);
+    }
 }
 
 static void update_ui_cb(struct k_work *work) {
-    if (session_bar == NULL) {
+    if (!ui_ready) {
         return;
     }
 
@@ -76,10 +122,21 @@ static void update_ui_cb(struct k_work *work) {
     is_stale = stale;
     k_spin_unlock(&state_lock, key);
 
-    apply_row(session_bar, session_pct_label, session_reset_label, state.session_pct,
-              state.session_reset_min, is_stale);
-    apply_row(weekly_bar, weekly_pct_label, weekly_reset_label, state.weekly_pct,
-              state.weekly_reset_min, is_stale);
+    char buf[8];
+
+    /* Las barras conservan el último valor aunque esté stale. */
+    apply_battery(session_segs, state.session_pct);
+    apply_battery(weekly_segs, state.weekly_pct);
+
+    format_pct(buf, sizeof(buf), is_stale ? ZMK_CLAUDE_USAGE_PCT_UNKNOWN : state.session_pct);
+    lv_label_set_text(session_pct_label, buf);
+
+    format_reset(buf, sizeof(buf),
+                 is_stale ? ZMK_CLAUDE_USAGE_MIN_UNKNOWN : state.session_reset_min);
+    lv_label_set_text(session_reset_label, buf);
+
+    format_pct(buf, sizeof(buf), is_stale ? ZMK_CLAUDE_USAGE_PCT_UNKNOWN : state.weekly_pct);
+    lv_label_set_text(weekly_pct_label, buf);
 }
 
 static K_WORK_DEFINE(update_ui_work, update_ui_cb);
@@ -109,48 +166,100 @@ void zmk_claude_usage_widget_update(struct zmk_claude_usage_state state) {
     }
 }
 
-static void make_row(lv_obj_t *parent, const char *title, int y, lv_obj_t **bar,
-                     lv_obj_t **pct_label, lv_obj_t **reset_label) {
-    lv_obj_t *name = lv_label_create(parent);
-    lv_obj_set_style_text_font(name, &lv_font_unscii_8, LV_PART_MAIN);
-    lv_label_set_text(name, title);
-    lv_obj_set_pos(name, 0, y + 2);
-
-    *bar = lv_bar_create(parent);
-    lv_obj_set_size(*bar, 42, 10);
-    lv_obj_set_pos(*bar, 18, y + 1);
-    lv_bar_set_range(*bar, 0, 100);
-    lv_bar_set_value(*bar, 0, LV_ANIM_OFF);
-    lv_obj_set_style_radius(*bar, 0, LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(*bar, LV_OPA_TRANSP, LV_PART_MAIN);
-    lv_obj_set_style_border_width(*bar, 1, LV_PART_MAIN);
-    lv_obj_set_style_border_color(*bar, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_pad_all(*bar, 1, LV_PART_MAIN);
-    lv_obj_set_style_radius(*bar, 0, LV_PART_INDICATOR);
-    lv_obj_set_style_bg_opa(*bar, LV_OPA_COVER, LV_PART_INDICATOR);
-    lv_obj_set_style_bg_color(*bar, lv_color_white(), LV_PART_INDICATOR);
-
-    *pct_label = lv_label_create(parent);
-    lv_obj_set_style_text_font(*pct_label, &lv_font_unscii_8, LV_PART_MAIN);
-    lv_obj_set_pos(*pct_label, 62, y + 2);
-    lv_obj_set_width(*pct_label, 32);
-    lv_obj_set_style_text_align(*pct_label, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN);
-    lv_label_set_text(*pct_label, "--%");
-
-    *reset_label = lv_label_create(parent);
-    lv_obj_set_style_text_font(*reset_label, &lv_font_unscii_8, LV_PART_MAIN);
-    lv_obj_set_pos(*reset_label, 96, y + 2);
-    lv_obj_set_width(*reset_label, 32);
-    lv_obj_set_style_text_align(*reset_label, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN);
-    lv_label_set_text(*reset_label, "--");
+static lv_obj_t *make_text(lv_obj_t *parent, int y, const char *init) {
+    lv_obj_t *lbl = lv_label_create(parent);
+    lv_obj_set_style_text_font(lbl, &lv_font_unscii_8, LV_PART_MAIN);
+    lv_obj_set_width(lbl, SCR_W);
+    lv_obj_set_style_text_align(lbl, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+    lv_obj_set_pos(lbl, 0, y);
+    lv_label_set_text(lbl, init);
+    return lbl;
 }
 
-lv_obj_t *zmk_display_status_screen() {
+/* Crea una batería segmentada: marco + BAR_SEGMENTS bloques apilados.
+ * Devuelve por seg_out[] los segmentos de abajo (idx 0) a arriba. */
+static void make_battery(lv_obj_t *parent, int x, int y, int w, int seg_h, int gap,
+                         lv_obj_t *seg_out[]) {
+    int total_h = BAR_SEGMENTS * seg_h + (BAR_SEGMENTS - 1) * gap;
+
+    lv_obj_t *frame = lv_obj_create(parent);
+    lv_obj_set_size(frame, w, total_h + 4);
+    lv_obj_set_pos(frame, x, y);
+    lv_obj_set_scrollbar_mode(frame, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_set_style_radius(frame, 0, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(frame, LV_OPA_TRANSP, LV_PART_MAIN);
+    lv_obj_set_style_border_width(frame, 1, LV_PART_MAIN);
+    lv_obj_set_style_border_color(frame, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_pad_all(frame, 1, LV_PART_MAIN);
+
+    int inner_w = w - 4;
+    for (int i = 0; i < BAR_SEGMENTS; i++) {
+        lv_obj_t *seg = lv_obj_create(frame);
+        lv_obj_set_size(seg, inner_w, seg_h);
+        /* idx 0 = abajo del todo, por eso invertimos la posición vertical. */
+        int sy = (BAR_SEGMENTS - 1 - i) * (seg_h + gap);
+        lv_obj_set_pos(seg, 0, sy);
+        lv_obj_set_scrollbar_mode(seg, LV_SCROLLBAR_MODE_OFF);
+        lv_obj_set_style_radius(seg, 0, LV_PART_MAIN);
+        lv_obj_set_style_border_width(seg, 0, LV_PART_MAIN);
+        lv_obj_set_style_bg_color(seg, lv_color_white(), LV_PART_MAIN);
+        lv_obj_set_style_bg_opa(seg, LV_OPA_TRANSP, LV_PART_MAIN);
+        seg_out[i] = seg;
+    }
+}
+
+lv_obj_t *zmk_display_status_screen(void) {
     lv_obj_t *screen = lv_obj_create(NULL);
     lv_obj_set_scrollbar_mode(screen, LV_SCROLLBAR_MODE_OFF);
 
-    make_row(screen, "5H", 1, &session_bar, &session_pct_label, &session_reset_label);
-    make_row(screen, "7D", 17, &weekly_bar, &weekly_pct_label, &weekly_reset_label);
+    /* Rotación 90 grados: la OLED es 128x32 nativa, la queremos 32x128. */
+    lv_disp_t *disp = lv_disp_get_default();
+    if (disp != NULL) {
+        lv_disp_set_rotation(disp, LV_DISP_ROT_90);
+    }
 
+    /* Alto de batería: 10 segmentos de 2px + 9 huecos de 1px + 4 de marco/pad. */
+    const int seg_h = 2, seg_gap = 1;
+    const int bat_h = BAR_SEGMENTS * seg_h + (BAR_SEGMENTS - 1) * seg_gap + 4; /* 33 */
+
+    int y = 0;
+
+    /* Bicho centrado arriba. */
+    lv_obj_t *ghost = lv_img_create(screen);
+    lv_img_set_src(ghost, &ghost_img);
+    lv_obj_set_style_img_recolor(ghost, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_img_recolor_opa(ghost, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_pos(ghost, (SCR_W - GHOST_W) / 2, y);
+    y += GHOST_H; /* 16 */
+
+    /* --- Bloque 5H --- */
+    make_text(screen, y, "5H");
+    y += 8;
+    make_battery(screen, 6, y, 20, seg_h, seg_gap, session_segs);
+    y += bat_h;
+    session_pct_label = make_text(screen, y, "--%");
+    y += 8;
+    session_reset_label = make_text(screen, y, "--");
+    y += 9;
+
+    /* --- Separador --- */
+    lv_obj_t *sep = lv_obj_create(screen);
+    lv_obj_set_size(sep, SCR_W - 8, 1);
+    lv_obj_set_pos(sep, 4, y);
+    lv_obj_set_scrollbar_mode(sep, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_set_style_radius(sep, 0, LV_PART_MAIN);
+    lv_obj_set_style_border_width(sep, 0, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(sep, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(sep, LV_OPA_COVER, LV_PART_MAIN);
+    y += 3;
+
+    /* --- Bloque 7D --- */
+    make_text(screen, y, "7D");
+    y += 8;
+    make_battery(screen, 6, y, 20, seg_h, seg_gap, weekly_segs);
+    y += bat_h;
+    weekly_pct_label = make_text(screen, y, "--%");
+
+    ui_ready = true;
     return screen;
 }

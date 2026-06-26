@@ -96,7 +96,9 @@ def _token_from_credential_manager() -> str | None:
         advapi32.CredFree(cred_ptr)
 
 
-TOKEN_URL = "https://console.anthropic.com/v1/oauth/token"
+# El endpoint de refresco se movió de console.anthropic.com a api.anthropic.com
+# (~jun 2026); console.* ahora devuelve 404 not_found_error.
+TOKEN_URL = "https://api.anthropic.com/v1/oauth/token"
 # client_id público de la CLI de Claude Code (mismo flujo OAuth que usa /login)
 OAUTH_CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
 # Refrescar si quedan menos de 2 min de vida al token

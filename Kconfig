@@ -15,12 +15,12 @@ config ZMK_CLAUDE_USAGE_WIDGET
     default y
     # Con pantalla custom, ZMK no activa widgets de LVGL: hay que
     # seleccionar aquí cada uno que se use o el enlace falla (lv_label_*...)
-    select LV_USE_BAR
     select LV_USE_LABEL
+    select LV_USE_IMG
     select LV_FONT_UNSCII_8
     help
-      Pantalla de estado personalizada con dos barras de progreso
-      (sesión 5 h y semana) y cuenta atrás hasta cada reinicio.
+      Pantalla vertical (32x128) con el bicho de Claude Code, dos baterías
+      segmentadas (sesión 5 h y semana) y cuenta atrás hasta el reinicio.
 
 config ZMK_CLAUDE_USAGE_STALE_TIMEOUT_S
     int "Segundos sin datos antes de marcar el valor como obsoleto"
