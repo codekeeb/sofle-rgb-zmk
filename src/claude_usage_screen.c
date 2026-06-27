@@ -132,7 +132,14 @@ static void render(struct zmk_claude_usage_state state, bool is_stale) {
         return;
     }
 
-    lv_canvas_fill_bg(canvas, COL_BG, LV_OPA_COVER);
+    /* Fondo: rect de tamaño completo (como draw_background de nice_oled);
+     * fill_bg no rellena fiable en depth-1 con este flujo. */
+    lv_draw_rect_dsc_t bg;
+    lv_draw_rect_dsc_init(&bg);
+    bg.bg_color = COL_BG;
+    bg.bg_opa = LV_OPA_COVER;
+    bg.radius = 0;
+    lv_canvas_draw_rect(canvas, 0, 0, CANVAS_SIDE, CANVAS_SIDE, &bg);
 
     char buf[8];
     int y = 0;
@@ -174,21 +181,37 @@ static void render(struct zmk_claude_usage_state state, bool is_stale) {
     format_pct(buf, sizeof(buf), is_stale ? ZMK_CLAUDE_USAGE_PCT_UNKNOWN : state.weekly_pct);
     draw_text(canvas, 0, y, LOG_W, buf);
 
-    /* Rotar el canvas 270° (antihorario) con pivote central, igual que la
-     * función rotate_canvas() de nice_oled. */
-    static lv_color_t cbuf_tmp[CANVAS_SIDE * CANVAS_SIDE];
-    memcpy(cbuf_tmp, cbuf, sizeof(cbuf_tmp));
+    /* Rotar 270° (antihorario) copiando píxel a píxel. Evitamos
+     * lv_canvas_transform porque en color depth 1 aplica chroma-key (el verde
+     * 0x00ff00 colapsa a un color mono) y hace desaparecer el contenido.
+     *
+     * Sólo importa la franja útil: el contenido vivo está en el rectángulo
+     * lógico [0..LOG_W) x [0..LOG_H). Lo volcamos rotado a la zona física
+     * 128x32 de la esquina superior izquierda.
+     *
+     * Rotación 270° antihoraria del punto lógico (lx,ly):
+     *   px = ly
+     *   py = (LOG_W-1) - lx
+     */
+    static lv_color_t src[CANVAS_SIDE * CANVAS_SIDE];
+    memcpy(src, cbuf, sizeof(src));
 
-    lv_img_dsc_t img;
-    img.data = (void *)cbuf_tmp;
-    img.header.cf = LV_IMG_CF_TRUE_COLOR;
-    img.header.always_zero = 0;
-    img.header.w = CANVAS_SIDE;
-    img.header.h = CANVAS_SIDE;
+    /* Limpiar el canvas a fondo antes de volcar la versión rotada. */
+    lv_draw_rect_dsc_t bg2;
+    lv_draw_rect_dsc_init(&bg2);
+    bg2.bg_color = COL_BG;
+    bg2.bg_opa = LV_OPA_COVER;
+    bg2.radius = 0;
+    lv_canvas_draw_rect(canvas, 0, 0, CANVAS_SIDE, CANVAS_SIDE, &bg2);
 
-    lv_canvas_fill_bg(canvas, COL_BG, LV_OPA_COVER);
-    lv_canvas_transform(canvas, &img, 2700, LV_IMG_ZOOM_NONE, 0, 0, CANVAS_SIDE / 2,
-                        CANVAS_SIDE / 2, false);
+    for (int ly = 0; ly < LOG_H; ly++) {
+        for (int lx = 0; lx < LOG_W; lx++) {
+            lv_color_t c = src[ly * CANVAS_SIDE + lx];
+            int px = ly;
+            int py = (LOG_W - 1) - lx;
+            lv_canvas_set_px(canvas, px, py, c);
+        }
+    }
 }
 
 static void update_ui_cb(struct k_work *work) {
