@@ -67,7 +67,12 @@ static const uint8_t ghost_dead[] = {
     0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x7f, 0xff, 0xfe, 0x7f, 0xff, 0xfe,
     0x1b, 0x00, 0xd8, 0x1b, 0x00, 0xd8, 0x1b, 0x00, 0xd8, 0x00, 0x00, 0x00,
 };
+
 #define BAR_SEGMENTS 10
+
+/* Modo de pantalla: reposo (bicho grande) o datos (claude-usage). */
+enum screen_mode { MODE_REST, MODE_DATA };
+static enum screen_mode screen_mode = MODE_REST; /* por defecto: reposo */
 
 /* Secuencia de animación. El parpadeo (C) aparece sólo una vez cada ciclo
  * largo para que no sea molesto; el resto alterna normal (A) y patas (B).
@@ -229,9 +234,49 @@ static void draw_text(lv_obj_t *cv, int x, int y, int w, const char *txt) {
     lv_canvas_draw_text(cv, x, y, w, &dsc, txt);
 }
 
+/* Vuelca la franja lógica [0,LOG_W) x [0,LOG_H) del canvas a su destino
+ * físico rotado 90° horario (px=LOG_H-1-ly, py=lx). El contenido se dibuja
+ * primero en esas coords lógicas y luego se llama a esto. */
+static void rotate_logical_to_physical(void) {
+    static lv_color_t src[CANVAS_SIDE * CANVAS_SIDE];
+    memcpy(src, cbuf, sizeof(src));
+    for (int px = 0; px < LOG_H; px++) {
+        int ly = (LOG_H - 1) - px;
+        for (int py = 0; py < LOG_W; py++) {
+            lv_canvas_set_px(canvas, px, py, src[ly * CANVAS_SIDE + py]);
+        }
+    }
+}
+
+/* Pantalla de reposo: el bicho centrado en toda la pantalla, animado. Sin
+ * datos, es el protagonista. Reusa el bicho normal (24x16) centrado. */
+static void render_rest(void) {
+    if (!ui_ready) {
+        return;
+    }
+
+    lv_draw_rect_dsc_t bg;
+    lv_draw_rect_dsc_init(&bg);
+    bg.bg_color = COL_BG;
+    bg.bg_opa = LV_OPA_COVER;
+    bg.radius = 0;
+    lv_canvas_draw_rect(canvas, 0, 0, CANVAS_SIDE, CANVAS_SIDE, &bg);
+
+    int gx = (LOG_W - GHOST_W) / 2;
+    int gy = (LOG_H - GHOST_H) / 2 + ghost_cur_float();
+    draw_ghost(canvas, ghost_cur_map(), gx, gy);
+
+    rotate_logical_to_physical();
+}
+
 /* Dibuja todo el contenido en orientación vertical y rota el canvas 270°. */
 static void render(struct zmk_claude_usage_state state, bool is_stale) {
     if (!ui_ready) {
+        return;
+    }
+
+    if (screen_mode == MODE_REST) {
+        render_rest();
         return;
     }
 
@@ -324,7 +369,11 @@ static K_WORK_DEFINE(update_ui_work, update_ui_cb);
  * periódico; el repintado se hace en la cola del display. */
 static void anim_work_cb(struct k_work *work) {
     ghost_frame = (ghost_frame + 1) % GHOST_ANIM_FRAMES;
-    animate_ghost(); /* redibuja SOLO la zona del bicho, ligero */
+    if (screen_mode == MODE_REST) {
+        render_rest(); /* solo el bicho centrado, barato */
+    } else {
+        animate_ghost(); /* en modo datos, redibuja sólo la zona del bicho */
+    }
 }
 static K_WORK_DEFINE(anim_work, anim_work_cb);
 
@@ -357,6 +406,16 @@ void zmk_claude_usage_widget_update(struct zmk_claude_usage_state state) {
     k_spin_unlock(&state_lock, key);
 
     k_work_reschedule(&stale_work, K_SECONDS(CONFIG_ZMK_CLAUDE_USAGE_STALE_TIMEOUT_S));
+
+    if (zmk_display_is_initialized()) {
+        k_work_submit_to_queue(zmk_display_work_q(), &update_ui_work);
+    }
+}
+
+void zmk_claude_usage_widget_toggle(void) {
+    k_spinlock_key_t key = k_spin_lock(&state_lock);
+    screen_mode = (screen_mode == MODE_REST) ? MODE_DATA : MODE_REST;
+    k_spin_unlock(&state_lock, key);
 
     if (zmk_display_is_initialized()) {
         k_work_submit_to_queue(zmk_display_work_q(), &update_ui_work);

@@ -13,5 +13,12 @@
             compatible = "qolera,claude-usage";
             #binding-cells = <2>;
         };
+
+        // Alterna la pantalla del widget (reposo del bicho <-> datos).
+        // Se usa en el keymap como &clddisp (vía tap-dance en DEL).
+        clddisp: clddisp {
+            compatible = "qolera,claude-disp";
+            #binding-cells = <0>;
+        };
     };
 };

@@ -1,0 +1,8 @@
+# Behavior que alterna la pantalla del widget de Claude (reposo <-> datos).
+# Sin parámetros; se invoca como &clddisp en el keymap.
+
+description: Claude display toggle behavior
+
+compatible: "qolera,claude-disp"
+
+include: zero_param.yaml

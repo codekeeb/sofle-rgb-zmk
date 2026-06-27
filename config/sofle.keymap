@@ -55,6 +55,15 @@ ZMK_UNICODE_PAIR(ene, N0, N0, F, N1, N0, N0, D, N1)
             #sensor-binding-cells = <0>;
             bindings = <&rgb_ug RGB_SPI>, <&rgb_ug RGB_SPD>;
         };
+
+        // DEL con tap-dance: 1 toque = DEL, 2 toques = alternar la pantalla
+        // del widget de Claude (reposo del bicho <-> datos de uso).
+        del_disp: del_disp {
+            compatible = "zmk,behavior-tap-dance";
+            #binding-cells = <0>;
+            tapping-term-ms = <200>;
+            bindings = <&kp DEL>, <&clddisp>;
+        };
     };
 
     conditional_layers {
@@ -77,7 +86,7 @@ ZMK_UNICODE_PAIR(ene, N0, N0, F, N1, N0, N0, D, N1)
 //                                             | CTRL  |  Z  |  X  |  C   |  V   |  B   |  MUTE  |  | PLAY  |  N   |  M    |  ,<   |  .>  |   -_  |   /?  |
 //                                                           | GUI | ALT  | CTRL | LOWER|  SPACE |  | ENTER | RAISE|  ALT  | CTRL  | GUI  |
             bindings = <
-&kp ESC      &kp N1       &kp N2       &kp N3          &kp N4          &kp N5                                         &kp N6          &kp N7          &kp N8          &kp N9          &kp N0          &kp DEL
+&kp ESC      &kp N1       &kp N2       &kp N3          &kp N4          &kp N5                                         &kp N6          &kp N7          &kp N8          &kp N9          &kp N0          &del_disp
 &kp TAB      &kp Q        &kp W        &kp E           &kp R           &kp T                                          &kp Y           &kp U           &kp I           &kp O           &kp P           &kp BSPC
 &sk LSHFT    &kp A        &kp S        &kp D           &kp F           &kp G                                          &kp H           &kp J           &kp K           &kp L           &ene            &kp RA(SQT)
 &kp LCTRL    &kp Z        &kp X        &kp C           &kp V           &kp B            &kp C_MUTE        &kp C_PLAY  &kp N           &kp M           &kp COMMA       &kp DOT         &kp MINUS       &kp SLASH

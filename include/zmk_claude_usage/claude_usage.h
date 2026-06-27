@@ -35,4 +35,6 @@ static inline struct zmk_claude_usage_state zmk_claude_usage_unpack(uint32_t par
 
 #ifdef CONFIG_ZMK_CLAUDE_USAGE_WIDGET
 void zmk_claude_usage_widget_update(struct zmk_claude_usage_state state);
+/* Alterna la pantalla entre reposo (bicho grande) y datos (claude-usage). */
+void zmk_claude_usage_widget_toggle(void);
 #endif
