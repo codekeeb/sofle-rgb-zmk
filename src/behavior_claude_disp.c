@@ -35,9 +35,12 @@ static int on_released(struct zmk_behavior_binding *binding,
 static const struct behavior_driver_api behavior_claude_disp_driver_api = {
     .binding_pressed = on_pressed,
     .binding_released = on_released,
-    /* EVENT_SOURCE: se ejecuta donde se origina la pulsación (la mitad donde
-     * está la tecla), que es justo donde queremos tocar el widget. */
-    .locality = BEHAVIOR_LOCALITY_EVENT_SOURCE,
+    /* GLOBAL: el keymap se procesa en la central, pero el widget vive en el
+     * periférico (derecha). Con GLOBAL la central reenvía la invocación a
+     * todos los periféricos por el split, así que el toggle llega a la mitad
+     * que tiene la pantalla. En la central también se ejecuta, pero allí el
+     * toggle es no-op (sin widget). */
+    .locality = BEHAVIOR_LOCALITY_GLOBAL,
 #if IS_ENABLED(CONFIG_ZMK_BEHAVIOR_METADATA)
     .get_parameter_metadata = zmk_behavior_get_empty_param_metadata,
 #endif
