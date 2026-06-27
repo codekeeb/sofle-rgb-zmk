@@ -1,11 +1,22 @@
 /*
- * Pantalla de estado personalizada (OLED 128x32) con el uso de Claude:
- * dos filas (sesión de 5 h y semana) con barra de progreso, porcentaje
- * y cuenta atrás hasta el reinicio. Si no llegan datos en
- * ZMK_CLAUDE_USAGE_STALE_TIMEOUT_S, los textos vuelven a "--".
+ * Pantalla de estado personalizada para la OLED del Sofle, en VERTICAL.
+ *
+ * Técnica idéntica a la del shield nice_oled (probada en este hardware: se ve
+ * vertical en la mitad izquierda): se dibuja todo en un lv_canvas cuadrado en
+ * orientación vertical y se rota el canvas entero con lv_canvas_transform.
+ *
+ * El cable USB de la mitad derecha sale por el lado que debe quedar ARRIBA
+ * (donde va el fantasma), lo que corresponde a una rotación de 270°.
+ *
+ * Lienzo lógico vertical (32 ancho x 128 alto), de arriba a abajo:
+ *   - bicho de Claude Code (pixel art)
+ *   - "5H" + batería segmentada + % + cuenta atrás
+ *   - separador
+ *   - "7D" + batería segmentada + %
  */
 
 #include <stdio.h>
+#include <string.h>
 
 #include <zephyr/kernel.h>
 #include <lvgl.h>
@@ -13,6 +24,37 @@
 #include <zmk/display.h>
 #include <zmk/display/status_screen.h>
 #include <zmk_claude_usage/claude_usage.h>
+
+/* Canvas cuadrado del lado mayor de la pantalla (128), como nice_oled. */
+#define CANVAS_SIDE 128
+#define LOG_W 32  /* ancho lógico vertical  */
+#define LOG_H 128 /* alto  lógico vertical  */
+
+/* En color depth 1, el fondo del canvas y el frente. nice_oled usa por
+ * defecto fondo blanco/frente negro; aquí el OLED del Sofle muestra texto
+ * blanco sobre negro, así que fondo negro / frente blanco. */
+#define COL_BG lv_color_black()
+#define COL_FG lv_color_white()
+
+/* Bicho de Claude Code, 24x16, 1 bit (MSB-first). */
+#define GHOST_W 24
+#define GHOST_H 16
+static const uint8_t ghost_map[] = {
+    0x00, 0x00, 0x00, 0x7f, 0xff, 0xfe, 0x7f, 0xff, 0xfe, 0x7f, 0xff, 0xfe,
+    0x7e, 0x3c, 0x7e, 0x7e, 0x3c, 0x7e, 0x7e, 0x3c, 0x7e, 0x7f, 0xff, 0xfe,
+    0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x7f, 0xff, 0xfe, 0x7f, 0xff, 0xfe,
+    0x18, 0x66, 0x18, 0x18, 0x66, 0x18, 0x18, 0x66, 0x18, 0x00, 0x00, 0x00,
+};
+static const lv_img_dsc_t ghost_img = {
+    .header.cf = LV_IMG_CF_ALPHA_1BIT,
+    .header.always_zero = 0,
+    .header.w = GHOST_W,
+    .header.h = GHOST_H,
+    .data_size = sizeof(ghost_map),
+    .data = ghost_map,
+};
+
+#define BAR_SEGMENTS 10
 
 static struct zmk_claude_usage_state current_state = {
     .session_pct = ZMK_CLAUDE_USAGE_PCT_UNKNOWN,
@@ -23,12 +65,9 @@ static struct zmk_claude_usage_state current_state = {
 static bool stale = true;
 static struct k_spinlock state_lock;
 
-static lv_obj_t *session_bar;
-static lv_obj_t *weekly_bar;
-static lv_obj_t *session_pct_label;
-static lv_obj_t *weekly_pct_label;
-static lv_obj_t *session_reset_label;
-static lv_obj_t *weekly_reset_label;
+static lv_color_t cbuf[CANVAS_SIDE * CANVAS_SIDE];
+static lv_obj_t *canvas;
+static bool ui_ready;
 
 static void format_pct(char *buf, size_t size, uint8_t pct) {
     if (pct == ZMK_CLAUDE_USAGE_PCT_UNKNOWN) {
@@ -50,24 +89,107 @@ static void format_reset(char *buf, size_t size, uint16_t minutes) {
     }
 }
 
-static void apply_row(lv_obj_t *bar, lv_obj_t *pct_label, lv_obj_t *reset_label, uint8_t pct,
-                      uint16_t reset_min, bool is_stale) {
-    char buf[8];
+static void draw_battery(lv_obj_t *cv, int x, int y, int w, int seg_h, int gap, uint8_t pct) {
+    lv_draw_rect_dsc_t border;
+    lv_draw_rect_dsc_init(&border);
+    border.bg_opa = LV_OPA_TRANSP;
+    border.border_color = COL_FG;
+    border.border_width = 1;
+    border.radius = 0;
 
-    lv_bar_set_value(bar, pct == ZMK_CLAUDE_USAGE_PCT_UNKNOWN ? 0 : pct, LV_ANIM_OFF);
+    int inner_h = BAR_SEGMENTS * seg_h + (BAR_SEGMENTS - 1) * gap;
+    lv_canvas_draw_rect(cv, x, y, w, inner_h + 4, &border);
 
-    format_pct(buf, sizeof(buf), is_stale ? ZMK_CLAUDE_USAGE_PCT_UNKNOWN : pct);
-    lv_label_set_text(pct_label, buf);
+    int filled = (pct == ZMK_CLAUDE_USAGE_PCT_UNKNOWN) ? 0 : (pct * BAR_SEGMENTS + 50) / 100;
 
-    format_reset(buf, sizeof(buf), is_stale ? ZMK_CLAUDE_USAGE_MIN_UNKNOWN : reset_min);
-    lv_label_set_text(reset_label, buf);
+    lv_draw_rect_dsc_t fill;
+    lv_draw_rect_dsc_init(&fill);
+    fill.bg_color = COL_FG;
+    fill.bg_opa = LV_OPA_COVER;
+    fill.radius = 0;
+
+    int inner_w = w - 4;
+    for (int i = 0; i < filled; i++) {
+        int sy = y + 2 + (BAR_SEGMENTS - 1 - i) * (seg_h + gap);
+        lv_canvas_draw_rect(cv, x + 2, sy, inner_w, seg_h, &fill);
+    }
 }
 
-static void update_ui_cb(struct k_work *work) {
-    if (session_bar == NULL) {
+static void draw_text(lv_obj_t *cv, int x, int y, int w, const char *txt) {
+    lv_draw_label_dsc_t dsc;
+    lv_draw_label_dsc_init(&dsc);
+    dsc.color = COL_FG;
+    dsc.font = &lv_font_unscii_8;
+    dsc.align = LV_TEXT_ALIGN_CENTER;
+    lv_canvas_draw_text(cv, x, y, w, &dsc, txt);
+}
+
+/* Dibuja todo el contenido en orientación vertical y rota el canvas 270°. */
+static void render(struct zmk_claude_usage_state state, bool is_stale) {
+    if (!ui_ready) {
         return;
     }
 
+    lv_canvas_fill_bg(canvas, COL_BG, LV_OPA_COVER);
+
+    char buf[8];
+    int y = 0;
+
+    /* Bicho centrado en el ancho lógico (32). */
+    lv_draw_img_dsc_t img_dsc;
+    lv_draw_img_dsc_init(&img_dsc);
+    img_dsc.recolor = COL_FG;
+    img_dsc.recolor_opa = LV_OPA_COVER;
+    lv_canvas_draw_img(canvas, (LOG_W - GHOST_W) / 2, y, &ghost_img, &img_dsc);
+    y += GHOST_H + 1;
+
+    /* 5H */
+    draw_text(canvas, 0, y, LOG_W, "5H");
+    y += 9;
+    draw_battery(canvas, 6, y, 20, 2, 1, state.session_pct);
+    y += (BAR_SEGMENTS * 2 + (BAR_SEGMENTS - 1) * 1 + 4) + 1;
+    format_pct(buf, sizeof(buf), is_stale ? ZMK_CLAUDE_USAGE_PCT_UNKNOWN : state.session_pct);
+    draw_text(canvas, 0, y, LOG_W, buf);
+    y += 9;
+    format_reset(buf, sizeof(buf),
+                 is_stale ? ZMK_CLAUDE_USAGE_MIN_UNKNOWN : state.session_reset_min);
+    draw_text(canvas, 0, y, LOG_W, buf);
+    y += 9;
+
+    /* separador */
+    lv_draw_rect_dsc_t line;
+    lv_draw_rect_dsc_init(&line);
+    line.bg_color = COL_FG;
+    line.bg_opa = LV_OPA_COVER;
+    lv_canvas_draw_rect(canvas, 4, y, LOG_W - 8, 1, &line);
+    y += 3;
+
+    /* 7D */
+    draw_text(canvas, 0, y, LOG_W, "7D");
+    y += 9;
+    draw_battery(canvas, 6, y, 20, 2, 1, state.weekly_pct);
+    y += (BAR_SEGMENTS * 2 + (BAR_SEGMENTS - 1) * 1 + 4) + 1;
+    format_pct(buf, sizeof(buf), is_stale ? ZMK_CLAUDE_USAGE_PCT_UNKNOWN : state.weekly_pct);
+    draw_text(canvas, 0, y, LOG_W, buf);
+
+    /* Rotar el canvas 270° (antihorario) con pivote central, igual que la
+     * función rotate_canvas() de nice_oled. */
+    static lv_color_t cbuf_tmp[CANVAS_SIDE * CANVAS_SIDE];
+    memcpy(cbuf_tmp, cbuf, sizeof(cbuf_tmp));
+
+    lv_img_dsc_t img;
+    img.data = (void *)cbuf_tmp;
+    img.header.cf = LV_IMG_CF_TRUE_COLOR;
+    img.header.always_zero = 0;
+    img.header.w = CANVAS_SIDE;
+    img.header.h = CANVAS_SIDE;
+
+    lv_canvas_fill_bg(canvas, COL_BG, LV_OPA_COVER);
+    lv_canvas_transform(canvas, &img, 2700, LV_IMG_ZOOM_NONE, 0, 0, CANVAS_SIDE / 2,
+                        CANVAS_SIDE / 2, false);
+}
+
+static void update_ui_cb(struct k_work *work) {
     struct zmk_claude_usage_state state;
     bool is_stale;
 
@@ -76,10 +198,7 @@ static void update_ui_cb(struct k_work *work) {
     is_stale = stale;
     k_spin_unlock(&state_lock, key);
 
-    apply_row(session_bar, session_pct_label, session_reset_label, state.session_pct,
-              state.session_reset_min, is_stale);
-    apply_row(weekly_bar, weekly_pct_label, weekly_reset_label, state.weekly_pct,
-              state.weekly_reset_min, is_stale);
+    render(state, is_stale);
 }
 
 static K_WORK_DEFINE(update_ui_work, update_ui_cb);
@@ -109,48 +228,18 @@ void zmk_claude_usage_widget_update(struct zmk_claude_usage_state state) {
     }
 }
 
-static void make_row(lv_obj_t *parent, const char *title, int y, lv_obj_t **bar,
-                     lv_obj_t **pct_label, lv_obj_t **reset_label) {
-    lv_obj_t *name = lv_label_create(parent);
-    lv_obj_set_style_text_font(name, &lv_font_unscii_8, LV_PART_MAIN);
-    lv_label_set_text(name, title);
-    lv_obj_set_pos(name, 0, y + 2);
-
-    *bar = lv_bar_create(parent);
-    lv_obj_set_size(*bar, 42, 10);
-    lv_obj_set_pos(*bar, 18, y + 1);
-    lv_bar_set_range(*bar, 0, 100);
-    lv_bar_set_value(*bar, 0, LV_ANIM_OFF);
-    lv_obj_set_style_radius(*bar, 0, LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(*bar, LV_OPA_TRANSP, LV_PART_MAIN);
-    lv_obj_set_style_border_width(*bar, 1, LV_PART_MAIN);
-    lv_obj_set_style_border_color(*bar, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_pad_all(*bar, 1, LV_PART_MAIN);
-    lv_obj_set_style_radius(*bar, 0, LV_PART_INDICATOR);
-    lv_obj_set_style_bg_opa(*bar, LV_OPA_COVER, LV_PART_INDICATOR);
-    lv_obj_set_style_bg_color(*bar, lv_color_white(), LV_PART_INDICATOR);
-
-    *pct_label = lv_label_create(parent);
-    lv_obj_set_style_text_font(*pct_label, &lv_font_unscii_8, LV_PART_MAIN);
-    lv_obj_set_pos(*pct_label, 62, y + 2);
-    lv_obj_set_width(*pct_label, 32);
-    lv_obj_set_style_text_align(*pct_label, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN);
-    lv_label_set_text(*pct_label, "--%");
-
-    *reset_label = lv_label_create(parent);
-    lv_obj_set_style_text_font(*reset_label, &lv_font_unscii_8, LV_PART_MAIN);
-    lv_obj_set_pos(*reset_label, 96, y + 2);
-    lv_obj_set_width(*reset_label, 32);
-    lv_obj_set_style_text_align(*reset_label, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN);
-    lv_label_set_text(*reset_label, "--");
-}
-
-lv_obj_t *zmk_display_status_screen() {
+lv_obj_t *zmk_display_status_screen(void) {
     lv_obj_t *screen = lv_obj_create(NULL);
     lv_obj_set_scrollbar_mode(screen, LV_SCROLLBAR_MODE_OFF);
 
-    make_row(screen, "5H", 1, &session_bar, &session_pct_label, &session_reset_label);
-    make_row(screen, "7D", 17, &weekly_bar, &weekly_pct_label, &weekly_reset_label);
+    /* Estructura idéntica a nice_oled: canvas directo en un obj del tamaño
+     * físico de la pantalla; el buffer es cuadrado para poder rotar. */
+    canvas = lv_canvas_create(screen);
+    lv_canvas_set_buffer(canvas, cbuf, CANVAS_SIDE, CANVAS_SIDE, LV_IMG_CF_TRUE_COLOR);
+    lv_obj_align(canvas, LV_ALIGN_TOP_LEFT, 0, 0);
+
+    ui_ready = true;
+    render(current_state, true);
 
     return screen;
 }
