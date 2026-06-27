@@ -171,13 +171,11 @@ static void render(struct zmk_claude_usage_state state, bool is_stale) {
     line.bg_color = COL_FG;
     line.bg_opa = LV_OPA_COVER;
     lv_canvas_draw_rect(canvas, 4, y, LOG_W - 8, 1, &line);
-    y += 3;
+    y += 4;
 
-    /* 7D */
+    /* 7D: solo texto (sin barra), para que la interfaz no sea tan alta. */
     draw_text(canvas, 0, y, LOG_W, "7D");
     y += 9;
-    draw_battery(canvas, 6, y, 20, 2, 1, state.weekly_pct);
-    y += (BAR_SEGMENTS * 2 + (BAR_SEGMENTS - 1) * 1 + 4) + 1;
     format_pct(buf, sizeof(buf), is_stale ? ZMK_CLAUDE_USAGE_PCT_UNKNOWN : state.weekly_pct);
     draw_text(canvas, 0, y, LOG_W, buf);
 
@@ -207,7 +205,7 @@ static void render(struct zmk_claude_usage_state state, bool is_stale) {
     for (int ly = 0; ly < LOG_H; ly++) {
         for (int lx = 0; lx < LOG_W; lx++) {
             lv_color_t c = src[ly * CANVAS_SIDE + lx];
-            int px = ly;
+            int px = (LOG_H - 1) - ly;
             int py = (LOG_W - 1) - lx;
             lv_canvas_set_px(canvas, px, py, c);
         }
