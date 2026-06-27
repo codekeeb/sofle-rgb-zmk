@@ -47,15 +47,6 @@ static const uint8_t ghost_map[] = {
     0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x7f, 0xff, 0xfe, 0x7f, 0xff, 0xfe,
     0x18, 0x66, 0x18, 0x18, 0x66, 0x18, 0x18, 0x66, 0x18, 0x00, 0x00, 0x00,
 };
-static const lv_img_dsc_t ghost_img = {
-    .header.cf = LV_IMG_CF_ALPHA_1BIT,
-    .header.always_zero = 0,
-    .header.w = GHOST_W,
-    .header.h = GHOST_H,
-    .data_size = sizeof(ghost_map),
-    .data = ghost_map,
-};
-
 #define BAR_SEGMENTS 10
 
 static struct zmk_claude_usage_state current_state = {
@@ -117,6 +108,28 @@ static void draw_battery(lv_obj_t *cv, int x, int y, int w, int seg_h, int gap, 
     }
 }
 
+/* Dibuja el bicho leyendo su bitmap 1bpp y pintando cada píxel encendido con
+ * un rect 1x1. Usamos esto en vez de lv_canvas_draw_img+recolor, que no
+ * renderiza en este canvas depth-1. */
+static void draw_ghost(lv_obj_t *cv, int x0, int y0) {
+    lv_draw_rect_dsc_t px;
+    lv_draw_rect_dsc_init(&px);
+    px.bg_color = COL_FG;
+    px.bg_opa = LV_OPA_COVER;
+    px.radius = 0;
+
+    int stride = (GHOST_W + 7) / 8; /* bytes por fila */
+    for (int row = 0; row < GHOST_H; row++) {
+        for (int col = 0; col < GHOST_W; col++) {
+            int byte = ghost_map[row * stride + (col / 8)];
+            int bit = (byte >> (7 - (col % 8))) & 1;
+            if (bit) {
+                lv_canvas_draw_rect(cv, x0 + col, y0 + row, 1, 1, &px);
+            }
+        }
+    }
+}
+
 static void draw_text(lv_obj_t *cv, int x, int y, int w, const char *txt) {
     lv_draw_label_dsc_t dsc;
     lv_draw_label_dsc_init(&dsc);
@@ -144,12 +157,8 @@ static void render(struct zmk_claude_usage_state state, bool is_stale) {
     char buf[8];
     int y = 0;
 
-    /* Bicho centrado en el ancho lógico (32). */
-    lv_draw_img_dsc_t img_dsc;
-    lv_draw_img_dsc_init(&img_dsc);
-    img_dsc.recolor = COL_FG;
-    img_dsc.recolor_opa = LV_OPA_COVER;
-    lv_canvas_draw_img(canvas, (LOG_W - GHOST_W) / 2, y, &ghost_img, &img_dsc);
+    /* Bicho centrado en el ancho lógico (32), dibujado con rects. */
+    draw_ghost(canvas, (LOG_W - GHOST_W) / 2, y);
     y += GHOST_H + 1;
 
     /* 5H */
@@ -206,7 +215,7 @@ static void render(struct zmk_claude_usage_state state, bool is_stale) {
         for (int lx = 0; lx < LOG_W; lx++) {
             lv_color_t c = src[ly * CANVAS_SIDE + lx];
             int px = (LOG_H - 1) - ly;
-            int py = (LOG_W - 1) - lx;
+            int py = lx;
             lv_canvas_set_px(canvas, px, py, c);
         }
     }
