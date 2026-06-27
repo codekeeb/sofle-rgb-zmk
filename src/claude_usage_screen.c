@@ -41,29 +41,35 @@
 /* Bicho de Claude Code, 24x16, 1 bit (MSB-first). */
 #define GHOST_W 24
 #define GHOST_H 16
-static const uint8_t ghost_map[] = {
-    0x00, 0x00, 0x00,
-    0x7f, 0xff, 0xfe,
-    0x7f, 0xff, 0xfe,
-    0x73, 0xff, 0x9e,
-    0x73, 0xff, 0x9e,
-    0x73, 0xff, 0x9e,
-    0x73, 0xff, 0x9e,
-    0x73, 0xff, 0x9e,
-    0xff, 0xff, 0xff,
-    0xff, 0xff, 0xff,
-    0x7f, 0xff, 0xfe,
-    0x7f, 0xff, 0xfe,
-    0x1b, 0x00, 0xd8,
-    0x1b, 0x00, 0xd8,
-    0x1b, 0x00, 0xd8,
-    0x00, 0x00, 0x00,
+/* Tres frames del bicho: A normal, B patas movidas, C parpadeo. */
+static const uint8_t ghost_A[] = {
+    0x00, 0x00, 0x00, 0x7f, 0xff, 0xfe, 0x7f, 0xff, 0xfe, 0x73, 0xff, 0x9e,
+    0x73, 0xff, 0x9e, 0x73, 0xff, 0x9e, 0x73, 0xff, 0x9e, 0x73, 0xff, 0x9e,
+    0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x7f, 0xff, 0xfe, 0x7f, 0xff, 0xfe,
+    0x1b, 0x00, 0xd8, 0x1b, 0x00, 0xd8, 0x1b, 0x00, 0xd8, 0x00, 0x00, 0x00,
+};
+static const uint8_t ghost_B[] = {
+    0x00, 0x00, 0x00, 0x7f, 0xff, 0xfe, 0x7f, 0xff, 0xfe, 0x73, 0xff, 0x9e,
+    0x73, 0xff, 0x9e, 0x73, 0xff, 0x9e, 0x73, 0xff, 0x9e, 0x73, 0xff, 0x9e,
+    0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x7f, 0xff, 0xfe, 0x7f, 0xff, 0xfe,
+    0x0d, 0x81, 0xb0, 0x0d, 0x81, 0xb0, 0x0d, 0x81, 0xb0, 0x00, 0x00, 0x00,
+};
+static const uint8_t ghost_C[] = {
+    0x00, 0x00, 0x00, 0x7f, 0xff, 0xfe, 0x7f, 0xff, 0xfe, 0x7f, 0xff, 0xfe,
+    0x7f, 0xff, 0xfe, 0x7f, 0xff, 0xfe, 0x7f, 0xff, 0xfe, 0x7f, 0xff, 0xfe,
+    0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x7f, 0xff, 0xfe, 0x7f, 0xff, 0xfe,
+    0x1b, 0x00, 0xd8, 0x1b, 0x00, 0xd8, 0x1b, 0x00, 0xd8, 0x00, 0x00, 0x00,
 };
 #define BAR_SEGMENTS 10
 
-/* Animación de flotación del bicho: offset vertical que oscila. */
-static const int8_t ghost_float[] = {0, 1, 2, 1}; /* sube y baja, suave */
-#define GHOST_FLOAT_FRAMES (sizeof(ghost_float) / sizeof(ghost_float[0]))
+/* Secuencia de animación: cada paso = (frame_bitmap, offset_flotación).
+ * Da vida al bicho: flota, mueve patas y parpadea, sin coste extra (el
+ * render ya se rehace una vez por tick de animación). */
+static const uint8_t *const ghost_seq[] = {
+    ghost_A, ghost_B, ghost_A, ghost_C,
+};
+static const int8_t ghost_float[] = {0, 1, 2, 1};
+#define GHOST_ANIM_FRAMES (sizeof(ghost_seq) / sizeof(ghost_seq[0]))
 static uint8_t ghost_frame;
 
 static struct zmk_claude_usage_state current_state = {
@@ -128,7 +134,7 @@ static void draw_battery(lv_obj_t *cv, int x, int y, int w, int seg_h, int gap, 
 /* Dibuja el bicho leyendo su bitmap 1bpp y pintando cada píxel encendido con
  * un rect 1x1. Usamos esto en vez de lv_canvas_draw_img+recolor, que no
  * renderiza en este canvas depth-1. */
-static void draw_ghost(lv_obj_t *cv, int x0, int y0) {
+static void draw_ghost(lv_obj_t *cv, const uint8_t *map, int x0, int y0) {
     lv_draw_rect_dsc_t px;
     lv_draw_rect_dsc_init(&px);
     px.bg_color = COL_FG;
@@ -138,7 +144,7 @@ static void draw_ghost(lv_obj_t *cv, int x0, int y0) {
     int stride = (GHOST_W + 7) / 8; /* bytes por fila */
     for (int row = 0; row < GHOST_H; row++) {
         for (int col = 0; col < GHOST_W; col++) {
-            int byte = ghost_map[row * stride + (col / 8)];
+            int byte = map[row * stride + (col / 8)];
             int bit = (byte >> (7 - (col % 8))) & 1;
             if (bit) {
                 lv_canvas_draw_rect(cv, x0 + col, y0 + row, 1, 1, &px);
@@ -178,8 +184,9 @@ static void render(struct zmk_claude_usage_state state, bool is_stale) {
      * superior, y dejamos un poco más de aire arriba para la flotación. */
     int y = 4;
 
-    /* Bicho centrado, con offset de flotación (0..2 px). */
-    draw_ghost(canvas, (LOG_W - GHOST_W) / 2, y + ghost_float[ghost_frame]);
+    /* Bicho centrado: frame de animación actual + offset de flotación. */
+    draw_ghost(canvas, ghost_seq[ghost_frame], (LOG_W - GHOST_W) / 2,
+               y + ghost_float[ghost_frame]);
     y += GHOST_H + 5; /* margen para la flotación + separación del bloque 5H */
 
     /* 5H */
@@ -250,7 +257,7 @@ static K_WORK_DEFINE(update_ui_work, update_ui_cb);
 /* Animación: avanza un frame de flotación y repinta. Lo dispara un timer
  * periódico; el repintado se hace en la cola del display. */
 static void anim_work_cb(struct k_work *work) {
-    ghost_frame = (ghost_frame + 1) % GHOST_FLOAT_FRAMES;
+    ghost_frame = (ghost_frame + 1) % GHOST_ANIM_FRAMES;
     update_ui_cb(NULL);
 }
 static K_WORK_DEFINE(anim_work, anim_work_cb);
