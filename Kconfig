@@ -13,15 +13,11 @@ config ZMK_CLAUDE_USAGE_WIDGET
     bool "Widget OLED de uso de Claude"
     depends on ZMK_DISPLAY && ZMK_DISPLAY_STATUS_SCREEN_CUSTOM
     default y
-    # Con pantalla custom, ZMK no activa widgets de LVGL: hay que
-    # seleccionar aquí cada uno que se use o el enlace falla.
-    # Dibujamos en un canvas y lo rotamos 90° (técnica de nice_oled).
-    select LV_USE_CANVAS
-    select LV_USE_IMG
+    select LV_USE_BAR
     select LV_FONT_UNSCII_8
     help
-      Pantalla vertical (32x128) con el bicho de Claude Code, dos baterías
-      segmentadas (sesión 5 h y semana) y cuenta atrás hasta el reinicio.
+      Pantalla de estado personalizada con dos barras de progreso
+      (sesión 5 h y semana) y cuenta atrás hasta cada reinicio.
 
 config ZMK_CLAUDE_USAGE_STALE_TIMEOUT_S
     int "Segundos sin datos antes de marcar el valor como obsoleto"
