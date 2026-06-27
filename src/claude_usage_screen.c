@@ -60,17 +60,37 @@ static const uint8_t ghost_C[] = {
     0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x7f, 0xff, 0xfe, 0x7f, 0xff, 0xfe,
     0x1b, 0x00, 0xd8, 0x1b, 0x00, 0xd8, 0x1b, 0x00, 0xd8, 0x00, 0x00, 0x00,
 };
+/* Bicho "muerto": ojos en X. Se usa quieto cuando la sesión está al 100%. */
+static const uint8_t ghost_dead[] = {
+    0x00, 0x00, 0x00, 0x7f, 0xff, 0xfe, 0x7f, 0xff, 0xfe, 0x7d, 0xdd, 0xde,
+    0x7e, 0xbe, 0xbe, 0x7f, 0x7f, 0x7e, 0x7e, 0xbe, 0xbe, 0x7d, 0xdd, 0xde,
+    0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x7f, 0xff, 0xfe, 0x7f, 0xff, 0xfe,
+    0x1b, 0x00, 0xd8, 0x1b, 0x00, 0xd8, 0x1b, 0x00, 0xd8, 0x00, 0x00, 0x00,
+};
 #define BAR_SEGMENTS 10
 
-/* Secuencia de animación: cada paso = (frame_bitmap, offset_flotación).
- * Da vida al bicho: flota, mueve patas y parpadea, sin coste extra (el
- * render ya se rehace una vez por tick de animación). */
+/* Secuencia de animación. El parpadeo (C) aparece sólo una vez cada ciclo
+ * largo para que no sea molesto; el resto alterna normal (A) y patas (B).
+ * La flotación va sincronizada con índices de flotación suaves. */
 static const uint8_t *const ghost_seq[] = {
-    ghost_A, ghost_B, ghost_A, ghost_C,
+    ghost_A, ghost_B, ghost_A, ghost_B, ghost_A, ghost_B,
+    ghost_A, ghost_B, ghost_A, ghost_B, ghost_C, ghost_A,
 };
-static const int8_t ghost_float[] = {0, 1, 2, 1};
+static const int8_t ghost_float[] = {0, 1, 2, 1, 0, 1, 2, 1, 0, 1, 2, 1};
 #define GHOST_ANIM_FRAMES (sizeof(ghost_seq) / sizeof(ghost_seq[0]))
 static uint8_t ghost_frame;
+
+/* Cuando la sesión de 5h llega al 100% (sin tokens), el bicho aparece
+ * "muerto": frame ghost_dead, quieto y sin flotación. */
+static bool ghost_dead_mode;
+
+/* Bitmap y offset de flotación del frame actual (muerto = quieto). */
+static const uint8_t *ghost_cur_map(void) {
+    return ghost_dead_mode ? ghost_dead : ghost_seq[ghost_frame];
+}
+static int ghost_cur_float(void) {
+    return ghost_dead_mode ? 0 : ghost_float[ghost_frame];
+}
 
 static struct zmk_claude_usage_state current_state = {
     .session_pct = ZMK_CLAUDE_USAGE_PCT_UNKNOWN,
@@ -173,9 +193,9 @@ static void animate_ghost(void) {
     memset(gbuf, 0, sizeof(gbuf));
 
     /* Pintar el frame actual (con flotación) en gbuf. */
-    const uint8_t *map = ghost_seq[ghost_frame];
+    const uint8_t *map = ghost_cur_map();
     int stride = (GHOST_W + 7) / 8;
-    int oy = ghost_float[ghost_frame];
+    int oy = ghost_cur_float();
     for (int row = 0; row < GHOST_H; row++) {
         int gy = row + oy;
         if (gy < 0 || gy >= GHOST_AREA_H) {
@@ -231,10 +251,8 @@ static void render(struct zmk_claude_usage_state state, bool is_stale) {
      * superior, y dejamos un poco más de aire arriba para la flotación. */
     int y = GHOST_Y0;
 
-    /* Bicho centrado: frame de animación actual + offset de flotación.
-     * Usa las mismas constantes que animate_ghost para que encajen. */
-    draw_ghost(canvas, ghost_seq[ghost_frame], GHOST_X,
-               y + ghost_float[ghost_frame]);
+    /* Bicho centrado: frame actual + flotación (o muerto, quieto). */
+    draw_ghost(canvas, ghost_cur_map(), GHOST_X, y + ghost_cur_float());
     y += GHOST_AREA_H + 2; /* zona del bicho + separación del bloque 5H */
 
     /* 5H */
@@ -333,6 +351,9 @@ void zmk_claude_usage_widget_update(struct zmk_claude_usage_state state) {
     k_spinlock_key_t key = k_spin_lock(&state_lock);
     current_state = state;
     stale = false;
+    /* Bicho muerto cuando la sesión de 5h llega al 100% (sin tokens). */
+    ghost_dead_mode = (state.session_pct != ZMK_CLAUDE_USAGE_PCT_UNKNOWN &&
+                       state.session_pct >= 100);
     k_spin_unlock(&state_lock, key);
 
     k_work_reschedule(&stale_work, K_SECONDS(CONFIG_ZMK_CLAUDE_USAGE_STALE_TIMEOUT_S));
