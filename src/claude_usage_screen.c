@@ -62,7 +62,7 @@ static const uint8_t ghost_map[] = {
 #define BAR_SEGMENTS 10
 
 /* Animación de flotación del bicho: offset vertical que oscila. */
-static const int8_t ghost_float[] = {0, 0, 1, 2, 2, 2, 1, 0}; /* sube y baja */
+static const int8_t ghost_float[] = {0, 1, 2, 1}; /* sube y baja, suave */
 #define GHOST_FLOAT_FRAMES (sizeof(ghost_float) / sizeof(ghost_float[0]))
 static uint8_t ghost_frame;
 
@@ -212,34 +212,22 @@ static void render(struct zmk_claude_usage_state state, bool is_stale) {
     format_pct(wpct, sizeof(wpct), is_stale ? ZMK_CLAUDE_USAGE_PCT_UNKNOWN : state.weekly_pct);
     draw_text(canvas, 0, y, LOG_W, wpct);
 
-    /* Rotar 270° (antihorario) copiando píxel a píxel. Evitamos
-     * lv_canvas_transform porque en color depth 1 aplica chroma-key (el verde
-     * 0x00ff00 colapsa a un color mono) y hace desaparecer el contenido.
+    /* Rotar copiando sólo la franja útil (32x128 lógico -> 128x32 físico).
+     * Recorremos el destino físico (128x32 = 4096 px) en vez del canvas
+     * entero, y leemos del buffer origen con índice directo (sin llamar a
+     * lv_canvas_get_px, que es caro). Mucho más ligero que recorrer 128x128.
      *
-     * Sólo importa la franja útil: el contenido vivo está en el rectángulo
-     * lógico [0..LOG_W) x [0..LOG_H). Lo volcamos rotado a la zona física
-     * 128x32 de la esquina superior izquierda.
-     *
-     * Rotación 270° antihoraria del punto lógico (lx,ly):
-     *   px = ly
-     *   py = (LOG_W-1) - lx
+     * Inverso de la rotación 90° horaria usada antes:
+     *   destino (px,py) <- origen (lx,ly) con  lx = py,  ly = (LOG_H-1)-px
      */
     static lv_color_t src[CANVAS_SIDE * CANVAS_SIDE];
     memcpy(src, cbuf, sizeof(src));
 
-    /* Limpiar el canvas a fondo antes de volcar la versión rotada. */
-    lv_draw_rect_dsc_t bg2;
-    lv_draw_rect_dsc_init(&bg2);
-    bg2.bg_color = COL_BG;
-    bg2.bg_opa = LV_OPA_COVER;
-    bg2.radius = 0;
-    lv_canvas_draw_rect(canvas, 0, 0, CANVAS_SIDE, CANVAS_SIDE, &bg2);
-
-    for (int ly = 0; ly < LOG_H; ly++) {
-        for (int lx = 0; lx < LOG_W; lx++) {
+    for (int px = 0; px < LOG_H; px++) {        /* 0..127 */
+        int ly = (LOG_H - 1) - px;
+        for (int py = 0; py < LOG_W; py++) {    /* 0..31 */
+            int lx = py;
             lv_color_t c = src[ly * CANVAS_SIDE + lx];
-            int px = (LOG_H - 1) - ly;
-            int py = lx;
             lv_canvas_set_px(canvas, px, py, c);
         }
     }
@@ -312,8 +300,10 @@ lv_obj_t *zmk_display_status_screen(void) {
     ui_ready = true;
     render(current_state, true);
 
-    /* Animación de flotación: ~5 fps (cada 200 ms avanza un frame). */
-    k_timer_start(&anim_timer, K_MSEC(200), K_MSEC(200));
+    /* Animación de flotación: 1 frame/seg. Frecuencia baja a propósito para
+     * no robar CPU al escaneo del teclado (cada frame rehace el render +
+     * rotación del canvas, que es costoso en el nRF52). */
+    k_timer_start(&anim_timer, K_SECONDS(1), K_SECONDS(1));
 
     return screen;
 }
