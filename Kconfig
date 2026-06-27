@@ -14,6 +14,7 @@ config ZMK_CLAUDE_USAGE_WIDGET
     depends on ZMK_DISPLAY && ZMK_DISPLAY_STATUS_SCREEN_CUSTOM
     default y
     select LV_USE_BAR
+    select LV_USE_LABEL
     select LV_FONT_UNSCII_8
     help
       Pantalla de estado personalizada con dos barras de progreso
