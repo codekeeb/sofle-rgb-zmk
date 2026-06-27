@@ -97,6 +97,18 @@ static int ghost_cur_float(void) {
     return ghost_dead_mode ? 0 : ghost_float[ghost_frame];
 }
 
+/* Estrellitas de la pantalla de reposo: posición fija (x, y base) y tamaño.
+ * Suben con un desplazamiento global (star_scroll) que crece cada tick; al
+ * salir por arriba reaparecen por abajo (módulo LOG_H). */
+struct star { uint8_t x; uint8_t y; uint8_t size; };
+static const struct star stars[] = {
+    {5, 10, 1},  {26, 24, 1}, {12, 40, 2}, {28, 58, 1}, {7, 72, 1},
+    {22, 88, 2}, {15, 104, 1}, {3, 118, 1}, {29, 12, 1}, {18, 66, 1},
+    {9, 96, 2},  {24, 50, 1},
+};
+#define STAR_COUNT (sizeof(stars) / sizeof(stars[0]))
+static uint16_t star_scroll;
+
 static struct zmk_claude_usage_state current_state = {
     .session_pct = ZMK_CLAUDE_USAGE_PCT_UNKNOWN,
     .weekly_pct = ZMK_CLAUDE_USAGE_PCT_UNKNOWN,
@@ -262,6 +274,21 @@ static void render_rest(void) {
     bg.radius = 0;
     lv_canvas_draw_rect(canvas, 0, 0, CANVAS_SIDE, CANVAS_SIDE, &bg);
 
+    /* Estrellitas subiendo (scroll infinito hacia arriba). */
+    lv_draw_rect_dsc_t star_dsc;
+    lv_draw_rect_dsc_init(&star_dsc);
+    star_dsc.bg_color = COL_FG;
+    star_dsc.bg_opa = LV_OPA_COVER;
+    star_dsc.radius = 0;
+    for (size_t i = 0; i < STAR_COUNT; i++) {
+        int sy = ((int)stars[i].y - star_scroll) % LOG_H;
+        if (sy < 0) {
+            sy += LOG_H;
+        }
+        lv_canvas_draw_rect(canvas, stars[i].x, sy, stars[i].size, stars[i].size,
+                            &star_dsc);
+    }
+
     int gx = (LOG_W - GHOST_W) / 2;
     int gy = (LOG_H - GHOST_H) / 2 + ghost_cur_float();
     draw_ghost(canvas, ghost_cur_map(), gx, gy);
@@ -370,7 +397,11 @@ static K_WORK_DEFINE(update_ui_work, update_ui_cb);
 static void anim_work_cb(struct k_work *work) {
     ghost_frame = (ghost_frame + 1) % GHOST_ANIM_FRAMES;
     if (screen_mode == MODE_REST) {
-        render_rest(); /* solo el bicho centrado, barato */
+        /* Estrellas suben 1px cada 2 ticks (más lento que la flotación). */
+        if (ghost_frame % 2 == 0) {
+            star_scroll = (star_scroll + 1) % LOG_H;
+        }
+        render_rest(); /* bicho centrado + estrellas, barato */
     } else {
         animate_ghost(); /* en modo datos, redibuja sólo la zona del bicho */
     }
