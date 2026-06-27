@@ -153,6 +153,53 @@ static void draw_ghost(lv_obj_t *cv, const uint8_t *map, int x0, int y0) {
     }
 }
 
+/* Zona lógica que ocupa el bicho (incluida la flotación). Debe coincidir con
+ * dónde lo dibuja render(). */
+#define GHOST_X ((LOG_W - GHOST_W) / 2)  /* 4 */
+#define GHOST_Y0 4                       /* y inicial en render() */
+#define GHOST_AREA_H (GHOST_H + 3)       /* alto + rango de flotación */
+
+/* Anima SOLO el bicho sin rehacer todo el render. El canvas mostrado ya está
+ * rotado, así que dibujamos el frame del bicho en un mini-buffer lógico
+ * propio (32 x GHOST_AREA_H) y volcamos ese rectángulo rotado directamente a
+ * la zona física del bicho con set_px. ~24x19 px, no los 4096 del render. */
+static void animate_ghost(void) {
+    if (!ui_ready) {
+        return;
+    }
+
+    /* Mini-lienzo lógico para el bicho: 1 byte por píxel (depth1 -> color1). */
+    static uint8_t gbuf[LOG_W * GHOST_AREA_H]; /* 1 = frente, 0 = fondo */
+    memset(gbuf, 0, sizeof(gbuf));
+
+    /* Pintar el frame actual (con flotación) en gbuf. */
+    const uint8_t *map = ghost_seq[ghost_frame];
+    int stride = (GHOST_W + 7) / 8;
+    int oy = ghost_float[ghost_frame];
+    for (int row = 0; row < GHOST_H; row++) {
+        int gy = row + oy;
+        if (gy < 0 || gy >= GHOST_AREA_H) {
+            continue;
+        }
+        for (int col = 0; col < GHOST_W; col++) {
+            int bit = (map[row * stride + (col / 8)] >> (7 - (col % 8))) & 1;
+            if (bit) {
+                gbuf[gy * LOG_W + (GHOST_X + col)] = 1;
+            }
+        }
+    }
+
+    /* Volcar rotado a la zona física del bicho. Mapeo de render:
+     * px = LOG_H-1-ly, py = lx, con ly = GHOST_Y0 + gy. */
+    for (int gy = 0; gy < GHOST_AREA_H; gy++) {
+        int px = (LOG_H - 1) - (GHOST_Y0 + gy);
+        for (int lx = 0; lx < LOG_W; lx++) {
+            lv_color_t c = gbuf[gy * LOG_W + lx] ? COL_FG : COL_BG;
+            lv_canvas_set_px(canvas, px, lx, c);
+        }
+    }
+}
+
 static void draw_text(lv_obj_t *cv, int x, int y, int w, const char *txt) {
     lv_draw_label_dsc_t dsc;
     lv_draw_label_dsc_init(&dsc);
@@ -182,12 +229,13 @@ static void render(struct zmk_claude_usage_state state, bool is_stale) {
     /* Bloque centrado verticalmente. Alturas: bicho 19, 5H 9, batería 34,
      * % 9, reset 9, sep 4, 7D 9 = ~93. Centramos en 128 con un margen
      * superior, y dejamos un poco más de aire arriba para la flotación. */
-    int y = 4;
+    int y = GHOST_Y0;
 
-    /* Bicho centrado: frame de animación actual + offset de flotación. */
-    draw_ghost(canvas, ghost_seq[ghost_frame], (LOG_W - GHOST_W) / 2,
+    /* Bicho centrado: frame de animación actual + offset de flotación.
+     * Usa las mismas constantes que animate_ghost para que encajen. */
+    draw_ghost(canvas, ghost_seq[ghost_frame], GHOST_X,
                y + ghost_float[ghost_frame]);
-    y += GHOST_H + 5; /* margen para la flotación + separación del bloque 5H */
+    y += GHOST_AREA_H + 2; /* zona del bicho + separación del bloque 5H */
 
     /* 5H */
     draw_text(canvas, 0, y, LOG_W, "5H");
@@ -258,7 +306,7 @@ static K_WORK_DEFINE(update_ui_work, update_ui_cb);
  * periódico; el repintado se hace en la cola del display. */
 static void anim_work_cb(struct k_work *work) {
     ghost_frame = (ghost_frame + 1) % GHOST_ANIM_FRAMES;
-    update_ui_cb(NULL);
+    animate_ghost(); /* redibuja SOLO la zona del bicho, ligero */
 }
 static K_WORK_DEFINE(anim_work, anim_work_cb);
 
@@ -307,10 +355,10 @@ lv_obj_t *zmk_display_status_screen(void) {
     ui_ready = true;
     render(current_state, true);
 
-    /* Animación de flotación: 1 frame/seg. Frecuencia baja a propósito para
-     * no robar CPU al escaneo del teclado (cada frame rehace el render +
-     * rotación del canvas, que es costoso en el nRF52). */
-    k_timer_start(&anim_timer, K_SECONDS(1), K_SECONDS(1));
+    /* Animación de flotación más fluida: ~4 fps. Ahora cada tick sólo
+     * redibuja la zona del bicho (animate_ghost), no toda la pantalla, así
+     * que sube la frecuencia sin penalizar el escaneo del teclado. */
+    k_timer_start(&anim_timer, K_MSEC(250), K_MSEC(250));
 
     return screen;
 }
