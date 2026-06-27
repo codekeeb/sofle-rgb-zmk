@@ -172,24 +172,28 @@ static void render(struct zmk_claude_usage_state state, bool is_stale) {
     lv_canvas_draw_rect(canvas, 0, 0, CANVAS_SIDE, CANVAS_SIDE, &bg);
 
     char buf[8];
-    int y = 0;
+
+    /* Bloque centrado verticalmente. Alturas: bicho 19, 5H 9, batería 34,
+     * % 9, reset 9, sep 4, 7D 9 = ~93. Centramos en 128 con un margen
+     * superior, y dejamos un poco más de aire arriba para la flotación. */
+    int y = 4;
 
     /* Bicho centrado, con offset de flotación (0..2 px). */
     draw_ghost(canvas, (LOG_W - GHOST_W) / 2, y + ghost_float[ghost_frame]);
-    y += GHOST_H + 3; /* +2 de margen para el rango de flotación */
+    y += GHOST_H + 5; /* margen para la flotación + separación del bloque 5H */
 
     /* 5H */
     draw_text(canvas, 0, y, LOG_W, "5H");
     y += 9;
     draw_battery(canvas, 6, y, 20, 2, 1, state.session_pct);
-    y += (BAR_SEGMENTS * 2 + (BAR_SEGMENTS - 1) * 1 + 4) + 1;
+    y += (BAR_SEGMENTS * 2 + (BAR_SEGMENTS - 1) * 1 + 4) + 2;
     format_pct(buf, sizeof(buf), is_stale ? ZMK_CLAUDE_USAGE_PCT_UNKNOWN : state.session_pct);
     draw_text(canvas, 0, y, LOG_W, buf);
     y += 9;
     format_reset(buf, sizeof(buf),
                  is_stale ? ZMK_CLAUDE_USAGE_MIN_UNKNOWN : state.session_reset_min);
     draw_text(canvas, 0, y, LOG_W, buf);
-    y += 9;
+    y += 11;
 
     /* separador */
     lv_draw_rect_dsc_t line;
@@ -197,13 +201,16 @@ static void render(struct zmk_claude_usage_state state, bool is_stale) {
     line.bg_color = COL_FG;
     line.bg_opa = LV_OPA_COVER;
     lv_canvas_draw_rect(canvas, 4, y, LOG_W - 8, 1, &line);
+    y += 4;
 
-    /* 7D: una sola línea ("7D 46%") abajo del todo, bien separada. */
-    char week[12];
+    /* 7D: "7D" y el % en dos líneas pegadas. En la franja lógica de 32px de
+     * ancho sólo caben 4 caracteres de unscii_8, así que "7D 46%" (6) no
+     * entra en una línea; se parte para que el % no se corte. */
     char wpct[8];
+    draw_text(canvas, 0, y, LOG_W, "7D");
+    y += 9;
     format_pct(wpct, sizeof(wpct), is_stale ? ZMK_CLAUDE_USAGE_PCT_UNKNOWN : state.weekly_pct);
-    snprintf(week, sizeof(week), "7D %s", wpct);
-    draw_text(canvas, 0, LOG_H - 9, LOG_W, week);
+    draw_text(canvas, 0, y, LOG_W, wpct);
 
     /* Rotar 270° (antihorario) copiando píxel a píxel. Evitamos
      * lv_canvas_transform porque en color depth 1 aplica chroma-key (el verde
