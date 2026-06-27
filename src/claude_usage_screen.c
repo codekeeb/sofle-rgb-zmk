@@ -397,10 +397,8 @@ static K_WORK_DEFINE(update_ui_work, update_ui_cb);
 static void anim_work_cb(struct k_work *work) {
     ghost_frame = (ghost_frame + 1) % GHOST_ANIM_FRAMES;
     if (screen_mode == MODE_REST) {
-        /* Estrellas suben 1px cada 2 ticks (más lento que la flotación). */
-        if (ghost_frame % 2 == 0) {
-            star_scroll = (star_scroll + 1) % LOG_H;
-        }
+        /* Estrellas suben 2px por tick (~8 px/s a 4 fps). */
+        star_scroll = (star_scroll + 2) % LOG_H;
         render_rest(); /* bicho centrado + estrellas, barato */
     } else {
         animate_ghost(); /* en modo datos, redibuja sólo la zona del bicho */
