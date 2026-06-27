@@ -54,12 +54,17 @@ static const uint8_t ghost_map[] = {
     0xff, 0xff, 0xff,
     0x7f, 0xff, 0xfe,
     0x7f, 0xff, 0xfe,
-    0x18, 0x66, 0x18,
-    0x18, 0x66, 0x18,
-    0x18, 0x66, 0x18,
+    0x1b, 0x00, 0xd8,
+    0x1b, 0x00, 0xd8,
+    0x1b, 0x00, 0xd8,
     0x00, 0x00, 0x00,
 };
 #define BAR_SEGMENTS 10
+
+/* Animación de flotación del bicho: offset vertical que oscila. */
+static const int8_t ghost_float[] = {0, 0, 1, 2, 2, 2, 1, 0}; /* sube y baja */
+#define GHOST_FLOAT_FRAMES (sizeof(ghost_float) / sizeof(ghost_float[0]))
+static uint8_t ghost_frame;
 
 static struct zmk_claude_usage_state current_state = {
     .session_pct = ZMK_CLAUDE_USAGE_PCT_UNKNOWN,
@@ -169,9 +174,9 @@ static void render(struct zmk_claude_usage_state state, bool is_stale) {
     char buf[8];
     int y = 0;
 
-    /* Bicho centrado en el ancho lógico (32), dibujado con rects. */
-    draw_ghost(canvas, (LOG_W - GHOST_W) / 2, y);
-    y += GHOST_H + 1;
+    /* Bicho centrado, con offset de flotación (0..2 px). */
+    draw_ghost(canvas, (LOG_W - GHOST_W) / 2, y + ghost_float[ghost_frame]);
+    y += GHOST_H + 3; /* +2 de margen para el rango de flotación */
 
     /* 5H */
     draw_text(canvas, 0, y, LOG_W, "5H");
@@ -192,13 +197,13 @@ static void render(struct zmk_claude_usage_state state, bool is_stale) {
     line.bg_color = COL_FG;
     line.bg_opa = LV_OPA_COVER;
     lv_canvas_draw_rect(canvas, 4, y, LOG_W - 8, 1, &line);
-    y += 4;
 
-    /* 7D: solo texto (sin barra), para que la interfaz no sea tan alta. */
-    draw_text(canvas, 0, y, LOG_W, "7D");
-    y += 9;
-    format_pct(buf, sizeof(buf), is_stale ? ZMK_CLAUDE_USAGE_PCT_UNKNOWN : state.weekly_pct);
-    draw_text(canvas, 0, y, LOG_W, buf);
+    /* 7D: una sola línea ("7D 46%") abajo del todo, bien separada. */
+    char week[12];
+    char wpct[8];
+    format_pct(wpct, sizeof(wpct), is_stale ? ZMK_CLAUDE_USAGE_PCT_UNKNOWN : state.weekly_pct);
+    snprintf(week, sizeof(week), "7D %s", wpct);
+    draw_text(canvas, 0, LOG_H - 9, LOG_W, week);
 
     /* Rotar 270° (antihorario) copiando píxel a píxel. Evitamos
      * lv_canvas_transform porque en color depth 1 aplica chroma-key (el verde
@@ -247,6 +252,21 @@ static void update_ui_cb(struct k_work *work) {
 
 static K_WORK_DEFINE(update_ui_work, update_ui_cb);
 
+/* Animación: avanza un frame de flotación y repinta. Lo dispara un timer
+ * periódico; el repintado se hace en la cola del display. */
+static void anim_work_cb(struct k_work *work) {
+    ghost_frame = (ghost_frame + 1) % GHOST_FLOAT_FRAMES;
+    update_ui_cb(NULL);
+}
+static K_WORK_DEFINE(anim_work, anim_work_cb);
+
+static void anim_timer_cb(struct k_timer *t) {
+    if (zmk_display_is_initialized()) {
+        k_work_submit_to_queue(zmk_display_work_q(), &anim_work);
+    }
+}
+static K_TIMER_DEFINE(anim_timer, anim_timer_cb, NULL);
+
 static void stale_work_cb(struct k_work *work) {
     k_spinlock_key_t key = k_spin_lock(&state_lock);
     stale = true;
@@ -284,6 +304,9 @@ lv_obj_t *zmk_display_status_screen(void) {
 
     ui_ready = true;
     render(current_state, true);
+
+    /* Animación de flotación: ~5 fps (cada 200 ms avanza un frame). */
+    k_timer_start(&anim_timer, K_MSEC(200), K_MSEC(200));
 
     return screen;
 }
