@@ -30,11 +30,13 @@
 #define LOG_W 32  /* ancho lógico vertical  */
 #define LOG_H 128 /* alto  lógico vertical  */
 
-/* En color depth 1, el fondo del canvas y el frente. nice_oled usa por
- * defecto fondo blanco/frente negro; aquí el OLED del Sofle muestra texto
- * blanco sobre negro, así que fondo negro / frente blanco. */
-#define COL_BG lv_color_black()
-#define COL_FG lv_color_white()
+/* La OLED del Sofle tiene "inversion-on" en su devicetree: el panel invierte
+ * todo a nivel hardware. El canvas escribe los píxeles en crudo (no pasa por
+ * el tema mono de ZMK), así que hay que invertir los colores aquí para
+ * compensar: fondo "blanco" lógico -> negro en pantalla; frente "negro"
+ * lógico -> blanco en pantalla. */
+#define COL_BG lv_color_white()
+#define COL_FG lv_color_black()
 
 /* Bicho de Claude Code, 24x16, 1 bit (MSB-first). */
 #define GHOST_W 24
