@@ -227,14 +227,18 @@ static void animate_ghost(void) {
     }
 
     /* Volcar rotado a la zona física del bicho. Mapeo de render:
-     * px = LOG_H-1-ly, py = lx, con ly = GHOST_Y0 + gy. */
+     * px = LOG_H-1-ly, py = lx, con ly = GHOST_Y0 + gy. Usamos
+     * lv_img_buf_set_px_color (sin invalidar por píxel) + una invalidación
+     * final, para no trabar el teclado. */
+    lv_img_dsc_t *dsc = lv_canvas_get_img(canvas);
     for (int gy = 0; gy < GHOST_AREA_H; gy++) {
         int px = (LOG_H - 1) - (GHOST_Y0 + gy);
         for (int lx = 0; lx < LOG_W; lx++) {
             lv_color_t c = gbuf[gy * LOG_W + lx] ? COL_FG : COL_BG;
-            lv_canvas_set_px(canvas, px, lx, c);
+            lv_img_buf_set_px_color(dsc, px, lx, c);
         }
     }
+    lv_obj_invalidate(canvas);
 }
 
 static void draw_text(lv_obj_t *cv, int x, int y, int w, const char *txt) {
@@ -247,17 +251,23 @@ static void draw_text(lv_obj_t *cv, int x, int y, int w, const char *txt) {
 }
 
 /* Vuelca la franja lógica [0,LOG_W) x [0,LOG_H) del canvas a su destino
- * físico rotado 90° horario (px=LOG_H-1-ly, py=lx). El contenido se dibuja
- * primero en esas coords lógicas y luego se llama a esto. */
+ * físico rotado 90° horario (px=LOG_H-1-ly, py=lx).
+ *
+ * CLAVE de rendimiento: usamos lv_img_buf_set_px_color (escribe en el buffer
+ * SIN invalidar) en vez de lv_canvas_set_px (que invalida el canvas entero en
+ * CADA píxel -> 4096 invalidaciones/tick saturaban la CPU del periférico y
+ * trababan el teclado). Invalidamos UNA sola vez al final. */
 static void rotate_logical_to_physical(void) {
     static lv_color_t src[CANVAS_SIDE * CANVAS_SIDE];
     memcpy(src, cbuf, sizeof(src));
+    lv_img_dsc_t *dsc = lv_canvas_get_img(canvas);
     for (int px = 0; px < LOG_H; px++) {
         int ly = (LOG_H - 1) - px;
         for (int py = 0; py < LOG_W; py++) {
-            lv_canvas_set_px(canvas, px, py, src[ly * CANVAS_SIDE + py]);
+            lv_img_buf_set_px_color(dsc, px, py, src[ly * CANVAS_SIDE + py]);
         }
     }
+    lv_obj_invalidate(canvas);
 }
 
 /* Pantalla de reposo: el bicho centrado en toda la pantalla, animado. Sin
@@ -357,25 +367,8 @@ static void render(struct zmk_claude_usage_state state, bool is_stale) {
     format_pct(wpct, sizeof(wpct), is_stale ? ZMK_CLAUDE_USAGE_PCT_UNKNOWN : state.weekly_pct);
     draw_text(canvas, 0, y, LOG_W, wpct);
 
-    /* Rotar copiando sólo la franja útil (32x128 lógico -> 128x32 físico).
-     * Recorremos el destino físico (128x32 = 4096 px) en vez del canvas
-     * entero, y leemos del buffer origen con índice directo (sin llamar a
-     * lv_canvas_get_px, que es caro). Mucho más ligero que recorrer 128x128.
-     *
-     * Inverso de la rotación 90° horaria usada antes:
-     *   destino (px,py) <- origen (lx,ly) con  lx = py,  ly = (LOG_H-1)-px
-     */
-    static lv_color_t src[CANVAS_SIDE * CANVAS_SIDE];
-    memcpy(src, cbuf, sizeof(src));
-
-    for (int px = 0; px < LOG_H; px++) {        /* 0..127 */
-        int ly = (LOG_H - 1) - px;
-        for (int py = 0; py < LOG_W; py++) {    /* 0..31 */
-            int lx = py;
-            lv_color_t c = src[ly * CANVAS_SIDE + lx];
-            lv_canvas_set_px(canvas, px, py, c);
-        }
-    }
+    /* Rotar el contenido lógico a físico (optimizado: sin invalidar por px). */
+    rotate_logical_to_physical();
 }
 
 static void update_ui_cb(struct k_work *work) {
