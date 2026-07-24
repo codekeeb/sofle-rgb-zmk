@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: MIT
+#
+# CODEKEEB PATCH: one discrete mouse-wheel tick per invocation.
+#
+# ZMK's stock &msc (mouse scroll) cannot be driven from an encoder: a
+# sensor-rotate behavior fires its binding as a TAP (press, then release
+# tap-ms later), while &msc only emits scroll from its own delayed work
+# loop and needs the press held across several work cycles -- USB logging
+# confirmed zero reports regardless of tap-ms. This behavior instead sends
+# one complete wheel event per press, which is exactly what a real mouse
+# wheel does per detent, so it works from encoders AND from normal keys.
+
+description: Send a single discrete mouse wheel tick
+
+compatible: "zmk,behavior-mouse-wheel"
+
+include: one_param.yaml

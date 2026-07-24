@@ -51,6 +51,29 @@ config ZMK_RGB_FX_PIXEL_DISTANCE
 # Only ever enabled on the half with ZMK_STUDIO (this repo's sofle_left),
 # since that's the only place it's useful.
 
+# --- Rueda de raton discreta (&mwheel) ---
+#
+# One wheel tick per press, unlike ZMK's stock &msc which needs to be held
+# across several work-loop cycles and therefore cannot be driven from an
+# encoder at all. See src/behaviors/behavior_mouse_wheel.c.
+
+DT_COMPAT_ZMK_MOUSE_WHEEL := zmk,behavior-mouse-wheel
+
+config ZMK_BEHAVIOR_MOUSE_WHEEL
+    bool
+    default $(dt_compat_enabled,$(DT_COMPAT_ZMK_MOUSE_WHEEL))
+    depends on ZMK_POINTING
+    # CENTRAL-ONLY: zmk_hid_mouse_scroll_set()/zmk_endpoints_send_mouse_report()
+    # only exist in a central build -- the peripheral has no HID stack of its
+    # own, it just forwards key events over the split link. The behavior has
+    # BEHAVIOR_LOCALITY_CENTRAL anyway, so the central is the only place it
+    # ever runs. (Confirmed by a real CI link failure building it into
+    # sofle_right: "undefined reference to zmk_hid_mouse_scroll_set".)
+    depends on !ZMK_SPLIT || ZMK_SPLIT_ROLE_CENTRAL
+    help
+      Discrete mouse wheel behavior (&mwheel): sends exactly one HID wheel
+      event per invocation, so it works from encoders as well as keys.
+
 DT_COMPAT_ZMK_SENSOR_ROTATE_DYNAMIC := zmk,behavior-sensor-rotate-dynamic
 
 config ZMK_SENSOR_ROTATE_DYNAMIC
