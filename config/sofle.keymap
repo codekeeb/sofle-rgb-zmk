@@ -28,6 +28,15 @@
             #binding-cells = <0>;
         };
 
+        // Macros editables en caliente (CODEKEEB PATCH, ver
+        // src/behaviors/behavior_dynamic_macro.c). &dmac N reproduce la
+        // ranura N, cuyo contenido se escribe desde el editor web y vive
+        // en flash: sirve para ñ, tildes, un email, "→"... sin recompilar.
+        dmac: dmac {
+            compatible = "zmk,behavior-dynamic-macro";
+            #binding-cells = <1>;
+        };
+
         // Discrete mouse wheel (CODEKEEB PATCH, see
         // src/behaviors/behavior_mouse_wheel.c). One HID wheel tick per
         // press: &mwheel 0 = up, 1 = down, 2 = left, 3 = right. Unlike

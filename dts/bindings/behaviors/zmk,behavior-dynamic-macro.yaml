@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: MIT
+#
+# CODEKEEB PATCH: a bank of macro slots that can be authored at runtime.
+#
+# ZMK's stock zmk,behavior-macro bakes its key sequence into devicetree,
+# so ZMK Studio can only point a key at an existing macro, never write
+# one. &dmac takes a slot number and plays back whatever sequence that
+# slot currently holds -- editable live from the keymap editor and kept
+# in flash across reboots and reflashes.
+
+description: Runtime-editable macro slot
+
+compatible: "zmk,behavior-dynamic-macro"
+
+include: one_param.yaml

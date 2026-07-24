@@ -20,6 +20,11 @@ if(CONFIG_ZMK_RGB_FX)
     src/fx/layer_color.c)
 endif()
 
+if(CONFIG_ZMK_BEHAVIOR_DYNAMIC_MACRO)
+  target_include_directories(app PRIVATE include)
+  target_sources(app PRIVATE src/behaviors/behavior_dynamic_macro.c)
+endif()
+
 if(CONFIG_ZMK_BEHAVIOR_MOUSE_WHEEL)
   target_sources(app PRIVATE src/behaviors/behavior_mouse_wheel.c)
 endif()
@@ -34,4 +39,8 @@ endif()
 # Studio in this repo only ever builds on the central too.
 if(CONFIG_ZMK_SENSOR_ROTATE_DYNAMIC AND CONFIG_ZMK_STUDIO)
   target_sources(app PRIVATE src/studio/sensor_binding_subsystem.c)
+endif()
+
+if(CONFIG_ZMK_BEHAVIOR_DYNAMIC_MACRO AND CONFIG_ZMK_STUDIO)
+  target_sources(app PRIVATE src/studio/macro_subsystem.c)
 endif()

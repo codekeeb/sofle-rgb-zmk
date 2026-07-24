@@ -51,6 +51,34 @@ config ZMK_RGB_FX_PIXEL_DISTANCE
 # Only ever enabled on the half with ZMK_STUDIO (this repo's sofle_left),
 # since that's the only place it's useful.
 
+# --- Macros editables en runtime (&dmac) ---
+#
+# ZMK's own macros are compile-time devicetree nodes, so Studio can never
+# author one. This is a bank of slots whose contents live in flash and can
+# be rewritten live from the keymap editor.
+
+DT_COMPAT_ZMK_DYNAMIC_MACRO := zmk,behavior-dynamic-macro
+
+config ZMK_BEHAVIOR_DYNAMIC_MACRO
+    bool
+    default $(dt_compat_enabled,$(DT_COMPAT_ZMK_DYNAMIC_MACRO))
+    select SETTINGS
+    # CENTRAL-ONLY: replaying a macro emits HID, which only the central can
+    # do. Same guard as &mwheel and the dynamic sensor-rotate behavior.
+    depends on !ZMK_SPLIT || ZMK_SPLIT_ROLE_CENTRAL
+    help
+      Runtime-editable macro slots (&dmac). Each slot stores a sequence of
+      key taps, Unicode codepoints and waits, persisted in flash.
+
+config ZMK_DYNAMIC_MACRO_SLOTS
+    int "Number of runtime-editable macro slots"
+    default 12
+    range 1 32
+    depends on ZMK_BEHAVIOR_DYNAMIC_MACRO
+    help
+      Each slot costs about 100 bytes of RAM plus a settings record, so
+      keep this close to what you actually use.
+
 # --- Rueda de raton discreta (&mwheel) ---
 #
 # One wheel tick per press, unlike ZMK's stock &msc which needs to be held
