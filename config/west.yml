@@ -9,6 +9,15 @@ manifest:
       remote: zmkfirmware
       revision: v0.3
       import: app/west.yml
+    # Override the zmk-studio-messages that ZMK's app/west.yml imports:
+    # adds get_sensor_bindings + SetSensorBindingRequest/Response so ZMK
+    # Studio (and this repo's src/studio/sensor_binding_subsystem.c) can
+    # read/write encoder rotation behavior, which upstream never exposed
+    # at all. Field numbers are in the 99/100 range to avoid colliding
+    # with future upstream additions.
+    - name: zmk-studio-messages
+      remote: codekeeb
+      revision: sensor-binding-rpc
     # Fork with runtime animation selection (behavior &oledanim) + graphic battery
     - name: zmk-nice-oled
       remote: codekeeb

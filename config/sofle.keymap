@@ -28,28 +28,62 @@
             #binding-cells = <0>;
         };
 
-        // Encoders as RGB controls (clockwise = first binding)
-        rgbenc_m: rgbenc_m { // lower + left encoder: mode
-            compatible = "zmk,behavior-sensor-rotate";
+        // Encoder rotation bindings below use zmk,behavior-sensor-rotate-dynamic
+        // (CODEKEEB PATCH, see src/behaviors/behavior_sensor_rotate_dynamic.c)
+        // instead of the stock zmk,behavior-sensor-rotate: same tap-dispatch
+        // mechanism, but the cw/ccw pair is readable and rewritable at
+        // runtime over ZMK Studio (persisted in flash), one instance per
+        // (layer, encoder) combination. `bindings` below is only the
+        // factory/default pair -- editing it live doesn't touch this file.
+        // sensor-index: 0 = left encoder, 1 = right encoder.
+        // layer-id: matches this keymap's declaration order (no layer
+        // reordering used), 0 = CODE, 1 = Lower, 2 = Raise.
+
+        enc_l0: enc_l0 { // CODE layer, left encoder: volume (factory)
+            compatible = "zmk,behavior-sensor-rotate-dynamic";
             #sensor-binding-cells = <0>;
+            sensor-index = <0>;
+            layer-id = <0>;
+            bindings = <&kp C_VOL_UP>, <&kp C_VOL_DN>;
+        };
+
+        enc_r0: enc_r0 { // CODE layer, right encoder: scroll (factory)
+            compatible = "zmk,behavior-sensor-rotate-dynamic";
+            #sensor-binding-cells = <0>;
+            sensor-index = <1>;
+            layer-id = <0>;
+            bindings = <&kp UP>, <&kp DOWN>;
+        };
+
+        enc_l1: enc_l1 { // Lower layer, left encoder: RGB mode (factory)
+            compatible = "zmk,behavior-sensor-rotate-dynamic";
+            #sensor-binding-cells = <0>;
+            sensor-index = <0>;
+            layer-id = <1>;
             bindings = <&rgbfx RGBFX_NEXT(0)>, <&rgbfx RGBFX_PREVIOUS(0)>;
         };
 
-        rgbenc_h: rgbenc_h { // lower + right encoder: hue
-            compatible = "zmk,behavior-sensor-rotate";
+        enc_r1: enc_r1 { // Lower layer, right encoder: RGB hue (factory)
+            compatible = "zmk,behavior-sensor-rotate-dynamic";
             #sensor-binding-cells = <0>;
+            sensor-index = <1>;
+            layer-id = <1>;
             bindings = <&rgbfx RGBFX_HUE_UP(0)>, <&rgbfx RGBFX_HUE_DOWN(0)>;
         };
 
-        rgbenc_b: rgbenc_b { // raise + left encoder: brightness
-            compatible = "zmk,behavior-sensor-rotate";
+        enc_l2: enc_l2 { // Raise layer, left encoder: RGB brightness (factory)
+            compatible = "zmk,behavior-sensor-rotate-dynamic";
             #sensor-binding-cells = <0>;
+            sensor-index = <0>;
+            layer-id = <2>;
             bindings = <&rgbfx RGBFX_BRIGHTEN(0)>, <&rgbfx RGBFX_DIM(0)>;
         };
 
-        rgbenc_s: rgbenc_s { // raise + right encoder: speed
-            compatible = "zmk,behavior-sensor-rotate";
+        enc_r2: enc_r2 { // Raise layer, right encoder: RGB speed (factory)
+            compatible = "zmk,behavior-sensor-rotate-dynamic";
             #sensor-binding-cells = <0>;
+            sensor-index = <1>;
+            layer-id = <2>;
             bindings = <&rgbfx RGBFX_SPD_UP(0)>, <&rgbfx RGBFX_SPD_DOWN(0)>;
         };
     };
@@ -75,8 +109,10 @@
 
             // Right encoder: UP/DOWN key taps per detent (line scrolling in
             // most apps), replacing the old 20-PG_UP/DN-per-detent macro
-            // (too abrupt -- jumped 20 pages on the slightest turn).
-            sensor-bindings = <&inc_dec_kp C_VOL_UP C_VOL_DN &inc_dec_kp UP DOWN>;
+            // (too abrupt -- jumped 20 pages on the slightest turn). Both
+            // slots are now editable live from ZMK Studio (see enc_l0/enc_r0
+            // above).
+            sensor-bindings = <&enc_l0 &enc_r0>;
         };
 
         lower_layer {
@@ -96,7 +132,7 @@
                           &trans       &trans       &trans                   &trans                    &trans                    &trans     &trans     &trans     &trans           &trans
             >;
 
-            sensor-bindings = <&rgbenc_m &rgbenc_h>;
+            sensor-bindings = <&enc_l1 &enc_r1>;
         };
 
         raise_layer {
@@ -115,7 +151,7 @@
                         &trans       &trans       &trans       &trans  &trans   &trans           &kp N0    &kp KP_DOT &kp KP_EQUAL &trans
             >;
 
-            sensor-bindings = <&rgbenc_b &rgbenc_s>;
+            sensor-bindings = <&enc_l2 &enc_r2>;
         };
     };
 };

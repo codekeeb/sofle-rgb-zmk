@@ -33,3 +33,42 @@ config ZMK_RGB_FX_PIXEL_DISTANCE
     depends on ZMK_RGB_FX
     help
       Tabla de distancias entre pixeles usada por el efecto ripple.
+
+# --- Encoder rotation bindings editable en runtime via ZMK Studio ---
+#
+# CENTRAL-ONLY, deliberately: ZMK itself never runs sensor-rotate
+# behavior logic on a split peripheral (app/CMakeLists.txt guards
+# behavior_sensor_rotate_common.c and behavior_queue.c behind
+# `if ((NOT CONFIG_ZMK_SPLIT) OR CONFIG_ZMK_SPLIT_ROLE_CENTRAL)`) -- a
+# peripheral's own encoder reports raw rotation, which ZMK's split link
+# forwards to the central, and the central is what always decides what
+# to do with it, for BOTH encoders. Confirmed by a real CI failure this
+# behavior tried to compile into sofle_right (peripheral) at first:
+# "undefined reference to zmk_behavior_queue_add" (that symbol doesn't
+# even exist in a peripheral build). Its own .c file is guarded the same
+# way ZMK's is, so this Kconfig option simply never applies there.
+#
+# Only ever enabled on the half with ZMK_STUDIO (this repo's sofle_left),
+# since that's the only place it's useful.
+
+DT_COMPAT_ZMK_SENSOR_ROTATE_DYNAMIC := zmk,behavior-sensor-rotate-dynamic
+
+config ZMK_SENSOR_ROTATE_DYNAMIC
+    bool
+    default $(dt_compat_enabled,$(DT_COMPAT_ZMK_SENSOR_ROTATE_DYNAMIC))
+    depends on !ZMK_SPLIT || ZMK_SPLIT_ROLE_CENTRAL
+    select SETTINGS
+    # zmk_behavior_get_local_id()/zmk_behavior_find_behavior_name_from_local_id()
+    # (used to persist/restore bindings by behavior identity) only compile
+    # into ZMK's core behind CONFIG_ZMK_BEHAVIOR_LOCAL_IDS, normally
+    # pulled in transitively by ZMK_STUDIO -- which is always present
+    # wherever this is enabled (see the `depends on` above), so this
+    # select is effectively redundant with Studio's own, but kept
+    # explicit for clarity and for standalone use of the module.
+    select ZMK_BEHAVIOR_LOCAL_IDS
+    help
+      Encoder (sensor) rotation bindings whose clockwise/counter-clockwise
+      assignment can be read and rewritten at runtime over ZMK Studio
+      (unlike stock ZMK's compile-time-only sensor-bindings) and persists
+      via settings, same as regular keys. See
+      src/studio/sensor_binding_subsystem.c for the RPC handlers.

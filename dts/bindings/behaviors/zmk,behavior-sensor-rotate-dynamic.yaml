@@ -1,0 +1,42 @@
+# SPDX-License-Identifier: MIT
+#
+# CODEKEEB PATCH: like the stock zmk,behavior-sensor-rotate-var, but its
+# cw/ccw bindings are runtime-editable (via ZMK Studio's new
+# set_sensor_binding request) and persisted in flash, instead of being
+# fixed forever at compile time from the `bindings` property below.
+# The `bindings` property only supplies the INITIAL/factory cw+ccw pair.
+#
+# One instance is needed per (layer, sensor) pair you want editable --
+# sensor-bindings assigns a behavior per layer, so "the right encoder in
+# the base layer" and "the right encoder in Lower" are two independent
+# slots that each need their own instance and their own layer-id/
+# sensor-index so Studio and flash storage can address them.
+
+description: Sensor rotate behavior with runtime-editable bindings
+
+compatible: "zmk,behavior-sensor-rotate-dynamic"
+
+properties:
+  "#sensor-binding-cells":
+    type: int
+    required: true
+    const: 0
+  bindings:
+    type: phandle-array
+    required: true
+    description: Factory [clockwise, counter-clockwise] binding pair.
+  tap-ms:
+    type: int
+    default: 5
+  sensor-index:
+    type: int
+    required: true
+    description: Which physical sensor (encoder) this instance controls.
+  layer-id:
+    type: int
+    required: true
+    description: |
+      Which keymap layer ID this instance's sensor-bindings slot belongs
+      to. Together with sensor-index, this is the (layer, sensor) key
+      Studio uses to address this specific binding pair and the key
+      under which it's persisted in flash.

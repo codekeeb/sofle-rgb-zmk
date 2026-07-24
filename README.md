@@ -48,6 +48,14 @@ reflashes (only `settings_reset` clears them).
 
 - **ZMK Studio**: the left half ships Studio; connect over USB, open
   [zmk.studio](https://zmk.studio) to remap live without flashing.
+- **Encoder rotation is also live-editable.** Unlike stock ZMK, where an
+  encoder's clockwise/counter-clockwise behavior is fixed at compile time,
+  this firmware exposes each encoder's rotation as an ordinary editable
+  binding (right-click an encoder in a compatible Studio client for the
+  CW/counter-clockwise/press menu). Changes persist in flash. This needs
+  a client built against this repo's ZMK Studio protocol fork (see
+  [codekeeb/zmk-studio-messages], `sensor-binding-rpc` branch) — stock
+  zmk.studio does not support it.
 
 ---
 
@@ -176,7 +184,9 @@ Every push builds `sofle_left` (with ZMK Studio), `sofle_right` and
 (sign in to GitHub, 90-day expiry).
 
 **Pinned versions** for reproducible builds (`config/west.yml`):
-ZMK `v0.3`, and the [codekeeb/zmk-nice-oled] fork `selectable` branch.
+ZMK `v0.3`, the [codekeeb/zmk-nice-oled] fork `selectable` branch, and the
+[codekeeb/zmk-studio-messages] fork `sensor-binding-rpc` branch (adds the
+encoder-editing RPCs to ZMK Studio's protocol).
 
 ### 📦 Releases (precompiled firmware)
 
@@ -212,3 +222,4 @@ with weird state: `settings_reset` on both halves and reflash.
 [zmk-rgb-fx]: https://github.com/crystalplanet/zmk-rgb-fx
 [codekeeb/zmk-nice-oled]: https://github.com/codekeeb/zmk-nice-oled/tree/selectable
 [mctechnology17/zmk-nice-oled]: https://github.com/mctechnology17/zmk-nice-oled
+[codekeeb/zmk-studio-messages]: https://github.com/codekeeb/zmk-studio-messages/tree/sensor-binding-rpc
