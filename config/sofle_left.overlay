@@ -164,3 +164,14 @@
         brightness-steps = <5>;
     };
 };
+
+/* CODEKEEB PATCH: shield default is steps=80, i.e. 4 quadrature
+ * pulses/detent (correct for a genuine Alps EC11). Our EC11-clone
+ * encoders only produce 2 pulses/detent, so the driver needed a
+ * second physical tic before it crossed the threshold and fired the
+ * first rotation event. steps=40 (triggers-per-rotation stays 20)
+ * matches the real 2-pulses/detent hardware so every tic fires
+ * immediately. */
+&left_encoder {
+    steps = <40>;
+};
