@@ -171,7 +171,13 @@
  * second physical tic before it crossed the threshold and fired the
  * first rotation event. steps=40 (triggers-per-rotation stays 20)
  * matches the real 2-pulses/detent hardware so every tic fires
- * immediately. */
-&left_encoder {
-    steps = <40>;
+ * immediately.
+ *
+ * Addressed by path, not by the &left_encoder label: this user overlay
+ * is parsed BEFORE the shield's own sofle_left.overlay, so the label
+ * does not exist yet here ("undefined node label 'left_encoder'"). */
+/ {
+    encoder_left {
+        steps = <40>;
+    };
 };

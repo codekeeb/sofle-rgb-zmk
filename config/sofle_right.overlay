@@ -156,7 +156,11 @@
 };
 
 /* CODEKEEB PATCH: see sofle_left.overlay - our EC11 clones are
- * 2 pulses/detent, not the shield's default 4 (steps=80). */
-&right_encoder {
-    steps = <40>;
+ * 2 pulses/detent, not the shield's default 4 (steps=80).
+ * Addressed by path because this overlay is parsed before the
+ * shield's, so the &right_encoder label is not defined yet. */
+/ {
+    encoder_right {
+        steps = <40>;
+    };
 };
