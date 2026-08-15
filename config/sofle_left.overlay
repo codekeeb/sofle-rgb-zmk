@@ -174,19 +174,22 @@
  *   driver:   degrees  = pulses * 360 / steps
  *   behavior: triggers = degrees / (360 / triggers-per-rotation)
  *
- * 30 detents x 4 quadrature transitions = 120 pulses/rotation, so steps=120
- * (3 degrees per pulse, 12 per detent) and triggers-per-rotation=30
- * (fires every 12 degrees) => exactly one event per detent, from the
- * very first click. With the stock values (steps=80, tpr=20) a detent
- * produced only 18 degrees against an 18-degree threshold, so rounding
- * left it one click short, which is why it took two clicks to register.
+ * What matters is the RATIO steps/triggers-per-rotation, i.e. how many
+ * pulses the driver wants per event. The stock 80/20 asks for 4 pulses,
+ * but these encoders only emit 2 per detent, so one click was never
+ * enough and it took two to register. 60/30 asks for 2 => one detent,
+ * one event, from the very first click.
+ *
+ * This is exactly what ZMK's leeloo_micro shield uses for the same kind
+ * of 30-detent encoder (steps=60, triggers-per-rotation=30); the plain
+ * leeloo uses 120/30 instead because its encoder does emit 4 per detent.
  *
  * Addressed by path, not by the &left_encoder label: this user overlay
  * is parsed BEFORE the shield's own sofle_left.overlay, so the label
  * does not exist yet here ("undefined node label 'left_encoder'"). */
 / {
     encoder_left {
-        steps = <120>;
+        steps = <60>;
     };
 
     sensors {
