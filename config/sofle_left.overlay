@@ -165,19 +165,31 @@
     };
 };
 
-/* CODEKEEB PATCH: shield default is steps=80, i.e. 4 quadrature
- * pulses/detent (correct for a genuine Alps EC11). Our EC11-clone
- * encoders only produce 2 pulses/detent, so the driver needed a
- * second physical tic before it crossed the threshold and fired the
- * first rotation event. steps=40 (triggers-per-rotation stays 20)
- * matches the real 2-pulses/detent hardware so every tic fires
- * immediately.
+/* CODEKEEB PATCH: make every detent fire a rotation event.
+ *
+ * Our encoders are generic 30-detent Chinese units, not the 20-detent
+ * Alps EC11 the shield assumes (steps=80, triggers-per-rotation=20).
+ * Two things have to agree for one detent to equal one event:
+ *
+ *   driver:   degrees  = pulses * 360 / steps
+ *   behavior: triggers = degrees / (360 / triggers-per-rotation)
+ *
+ * 30 detents x 4 quadrature transitions = 120 pulses/rotation, so steps=120
+ * (3 degrees per pulse, 12 per detent) and triggers-per-rotation=30
+ * (fires every 12 degrees) => exactly one event per detent, from the
+ * very first click. With the stock values (steps=80, tpr=20) a detent
+ * produced only 18 degrees against an 18-degree threshold, so rounding
+ * left it one click short, which is why it took two clicks to register.
  *
  * Addressed by path, not by the &left_encoder label: this user overlay
  * is parsed BEFORE the shield's own sofle_left.overlay, so the label
  * does not exist yet here ("undefined node label 'left_encoder'"). */
 / {
     encoder_left {
-        steps = <40>;
+        steps = <120>;
+    };
+
+    sensors {
+        triggers-per-rotation = <30>;
     };
 };

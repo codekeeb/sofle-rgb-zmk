@@ -155,12 +155,17 @@
     };
 };
 
-/* CODEKEEB PATCH: see sofle_left.overlay - our EC11 clones are
- * 2 pulses/detent, not the shield's default 4 (steps=80).
+/* CODEKEEB PATCH: see sofle_left.overlay for the full explanation.
+ * Generic 30-detent Chinese encoder: 30 detents x 4 quadrature transitions
+ * = 120 pulses/rotation, and 30 triggers/rotation so every detent fires.
  * Addressed by path because this overlay is parsed before the
  * shield's, so the &right_encoder label is not defined yet. */
 / {
     encoder_right {
-        steps = <40>;
+        steps = <120>;
+    };
+
+    sensors {
+        triggers-per-rotation = <30>;
     };
 };
