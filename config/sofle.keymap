@@ -180,3 +180,30 @@
         };
     };
 };
+
+/* CODEKEEB PATCH: make every encoder detent fire one rotation event.
+ *
+ * These are generic 30-detent encoders, not the 20-detent Alps EC11 the
+ * Sofle shield assumes (steps=80, triggers-per-rotation=20). What decides
+ * when an event fires is the ratio steps/triggers-per-rotation, i.e. how
+ * many quadrature pulses the driver wants per event: 80/20 asks for 4,
+ * but a USB trace of the real hardware shows each detent produces exactly
+ * 2 transitions (clean, no bounce, no invalid states), so one event only
+ * landed every other click. 60/30 asks for 2 => one detent, one event.
+ *
+ * This lives in the keymap, NOT in config/sofle_left.overlay, because the
+ * user overlay is processed BEFORE the shield's own sofle_left.overlay,
+ * which then overwrites these properties right back to 80/20. The keymap
+ * is applied after the shield, so it is the one that actually wins.
+ * Verified in the generated devicetree, not just assumed. */
+&left_encoder {
+    steps = <60>;
+};
+
+&right_encoder {
+    steps = <60>;
+};
+
+&sensors {
+    triggers-per-rotation = <30>;
+};

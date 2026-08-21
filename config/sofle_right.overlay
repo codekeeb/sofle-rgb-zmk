@@ -154,19 +154,3 @@
         brightness-steps = <5>;
     };
 };
-
-/* CODEKEEB PATCH: see sofle_left.overlay for the full explanation.
- * Generic 30-detent Chinese encoder emitting 2 pulses per detent:
- * steps=60 + triggers-per-rotation=30 asks the driver for 2 pulses per
- * event, so every detent fires (same as ZMK's leeloo_micro shield).
- * Addressed by path because this overlay is parsed before the
- * shield's, so the &right_encoder label is not defined yet. */
-/ {
-    encoder_right {
-        steps = <60>;
-    };
-
-    sensors {
-        triggers-per-rotation = <30>;
-    };
-};

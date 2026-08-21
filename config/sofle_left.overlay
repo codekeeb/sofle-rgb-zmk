@@ -164,35 +164,3 @@
         brightness-steps = <5>;
     };
 };
-
-/* CODEKEEB PATCH: make every detent fire a rotation event.
- *
- * Our encoders are generic 30-detent Chinese units, not the 20-detent
- * Alps EC11 the shield assumes (steps=80, triggers-per-rotation=20).
- * Two things have to agree for one detent to equal one event:
- *
- *   driver:   degrees  = pulses * 360 / steps
- *   behavior: triggers = degrees / (360 / triggers-per-rotation)
- *
- * What matters is the RATIO steps/triggers-per-rotation, i.e. how many
- * pulses the driver wants per event. The stock 80/20 asks for 4 pulses,
- * but these encoders only emit 2 per detent, so one click was never
- * enough and it took two to register. 60/30 asks for 2 => one detent,
- * one event, from the very first click.
- *
- * This is exactly what ZMK's leeloo_micro shield uses for the same kind
- * of 30-detent encoder (steps=60, triggers-per-rotation=30); the plain
- * leeloo uses 120/30 instead because its encoder does emit 4 per detent.
- *
- * Addressed by path, not by the &left_encoder label: this user overlay
- * is parsed BEFORE the shield's own sofle_left.overlay, so the label
- * does not exist yet here ("undefined node label 'left_encoder'"). */
-/ {
-    encoder_left {
-        steps = <60>;
-    };
-
-    sensors {
-        triggers-per-rotation = <30>;
-    };
-};
