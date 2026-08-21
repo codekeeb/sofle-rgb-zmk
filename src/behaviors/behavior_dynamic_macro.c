@@ -154,15 +154,20 @@ static void build_unicode(uint32_t cp) {
     const uint32_t k_lshft = ZMK_HID_USAGE(HID_USAGE_KEY, HID_USAGE_KEY_KEYBOARD_LEFTSHIFT);
     const uint32_t k_lalt = ZMK_HID_USAGE(HID_USAGE_KEY, HID_USAGE_KEY_KEYBOARD_LEFTALT);
     const uint32_t k_ralt = ZMK_HID_USAGE(HID_USAGE_KEY, HID_USAGE_KEY_KEYBOARD_RIGHTALT);
+    const uint32_t k_space = ZMK_HID_USAGE(HID_USAGE_KEY, HID_USAGE_KEY_KEYBOARD_SPACEBAR);
 
     uni_len = 0;
 
     switch (unicode_mode) {
     case ZMK_DMAC_UNICODE_WIN_COMPOSE:
-        /* WinCompose: RAlt+U, then hex, then Enter. */
-        uni_add(k_ralt, 1);
+        /* WinCompose: the documented sequence is
+         *     Compose, u, hex digits, Enter
+         * with Compose TAPPED, not held. Its default Compose key is
+         * Right Alt. Holding RAlt across the "u" sends AltGr+U instead,
+         * which is a different chord: WinCompose never enters compose
+         * mode and the digits land as literal text ("00f1"). */
+        uni_add(k_ralt, 0);
         uni_add(k_u, 0);
-        uni_add(k_ralt, -1);
         uni_add_hex(cp);
         uni_add(k_enter, 0);
         break;
@@ -174,14 +179,17 @@ static void build_unicode(uint32_t cp) {
         break;
     case ZMK_DMAC_UNICODE_LINUX:
     default:
-        /* IBus/GTK: Ctrl+Shift+U, hex, Enter. */
+        /* IBus/GTK: Ctrl+Shift+U, hex, then SPACE to commit.
+         * Space rather than Enter, matching zmk-helpers: if the host
+         * never entered hex mode, a stray space is far less disruptive
+         * than a stray newline (which submits forms and chat boxes). */
         uni_add(k_lctrl, 1);
         uni_add(k_lshft, 1);
         uni_add(k_u, 0);
         uni_add(k_lshft, -1);
         uni_add(k_lctrl, -1);
         uni_add_hex(cp);
-        uni_add(k_enter, 0);
+        uni_add(k_space, 0);
         break;
     }
 }
