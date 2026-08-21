@@ -50,6 +50,12 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
  * hosts and remote-desktop sessions don't swallow keys, short enough that
  * a sentence-length macro still feels instant. */
 #define DMAC_TAP_MS 8
+/* Gap between the individual keys of a Unicode sequence. The sequence is
+ * not plain typing: the host has to notice the activation chord (AltGr+U,
+ * Ctrl+Shift+U) and switch into hex-entry mode before the digits arrive.
+ * Emitting them in one go made WinCompose miss the chord entirely and
+ * take "D1<Enter>" as literal typing. */
+#define DMAC_UNI_MS 16
 
 struct dmac_slot {
     struct zmk_dmac_step steps[ZMK_DMAC_MAX_STEPS];
@@ -106,21 +112,42 @@ static uint32_t hex_keycode(uint8_t nibble) {
     return ZMK_HID_USAGE(HID_USAGE_KEY, usage);
 }
 
-/* Types a codepoint as hex digits, most significant nibble first, skipping
- * leading zeros (every method below accepts a short form). */
-static void type_hex(uint32_t cp) {
-    bool started = false;
-    for (int shift = 20; shift >= 0; shift -= 4) {
-        uint8_t nib = (cp >> shift) & 0xF;
-        if (!started && nib == 0 && shift > 0) {
-            continue;
-        }
-        started = true;
-        tap_now(hex_keycode(nib));
+/* One step of a Unicode sequence: a key to tap, or a modifier to hold or
+ * release. Built up front, then played out one per timer tick so the host
+ * sees them as separate keystrokes. */
+struct uni_ev {
+    uint32_t key;
+    int8_t hold; /* 1 press, -1 release, 0 tap */
+};
+
+#define UNI_MAX_EVENTS 16
+static struct uni_ev uni_seq[UNI_MAX_EVENTS];
+static uint8_t uni_len;
+
+static void uni_add(uint32_t key, int8_t hold) {
+    if (uni_len < UNI_MAX_EVENTS) {
+        uni_seq[uni_len].key = key;
+        uni_seq[uni_len].hold = hold;
+        uni_len++;
     }
 }
 
-static void emit_unicode(uint32_t cp) {
+/* Queues the hex digits, most significant nibble first.
+ *
+ * Always padded to four digits (six above the BMP), which is what
+ * WinCompose documents and what a hand written ZMK_UNICODE macro emits:
+ * "00F1", not "F1". The short form is ambiguous when the next character
+ * typed is itself a hex digit, and some hosts reject it outright. */
+static void uni_add_hex(uint32_t cp) {
+    int top = (cp > 0xFFFF) ? 20 : 12;
+    for (int shift = top; shift >= 0; shift -= 4) {
+        uni_add(hex_keycode((cp >> shift) & 0xF), 0);
+    }
+}
+
+/* Fills uni_seq with the sequence for one codepoint. Nothing is emitted
+ * here -- dmac_work_cb plays it out with a gap between each event. */
+static void build_unicode(uint32_t cp) {
     const uint32_t k_u = ZMK_HID_USAGE(HID_USAGE_KEY, HID_USAGE_KEY_KEYBOARD_U);
     const uint32_t k_enter = ZMK_HID_USAGE(HID_USAGE_KEY, HID_USAGE_KEY_KEYBOARD_RETURN_ENTER);
     const uint32_t k_lctrl = ZMK_HID_USAGE(HID_USAGE_KEY, HID_USAGE_KEY_KEYBOARD_LEFTCONTROL);
@@ -128,31 +155,33 @@ static void emit_unicode(uint32_t cp) {
     const uint32_t k_lalt = ZMK_HID_USAGE(HID_USAGE_KEY, HID_USAGE_KEY_KEYBOARD_LEFTALT);
     const uint32_t k_ralt = ZMK_HID_USAGE(HID_USAGE_KEY, HID_USAGE_KEY_KEYBOARD_RIGHTALT);
 
+    uni_len = 0;
+
     switch (unicode_mode) {
     case ZMK_DMAC_UNICODE_WIN_COMPOSE:
         /* WinCompose: RAlt+U, then hex, then Enter. */
-        press_now(k_ralt, true);
-        tap_now(k_u);
-        press_now(k_ralt, false);
-        type_hex(cp);
-        tap_now(k_enter);
+        uni_add(k_ralt, 1);
+        uni_add(k_u, 0);
+        uni_add(k_ralt, -1);
+        uni_add_hex(cp);
+        uni_add(k_enter, 0);
         break;
     case ZMK_DMAC_UNICODE_MACOS:
         /* "Unicode Hex Input" layout: Option held across the digits. */
-        press_now(k_lalt, true);
-        type_hex(cp);
-        press_now(k_lalt, false);
+        uni_add(k_lalt, 1);
+        uni_add_hex(cp);
+        uni_add(k_lalt, -1);
         break;
     case ZMK_DMAC_UNICODE_LINUX:
     default:
         /* IBus/GTK: Ctrl+Shift+U, hex, Enter. */
-        press_now(k_lctrl, true);
-        press_now(k_lshft, true);
-        tap_now(k_u);
-        press_now(k_lshft, false);
-        press_now(k_lctrl, false);
-        type_hex(cp);
-        tap_now(k_enter);
+        uni_add(k_lctrl, 1);
+        uni_add(k_lshft, 1);
+        uni_add(k_u, 0);
+        uni_add(k_lshft, -1);
+        uni_add(k_lctrl, -1);
+        uni_add_hex(cp);
+        uni_add(k_enter, 0);
         break;
     }
 }
@@ -163,23 +192,47 @@ static void dmac_work_cb(struct k_work *work) {
         return;
     }
 
-    const struct zmk_dmac_step *s = &player.steps[player.idx++];
+    const struct zmk_dmac_step *s = &player.steps[player.idx];
     uint32_t delay = DMAC_TAP_MS;
 
     switch (s->type) {
     case ZMK_DMAC_STEP_TAP:
+        player.idx++;
         tap_now(s->value);
         break;
-    case ZMK_DMAC_STEP_UNICODE:
-        emit_unicode(s->value);
-        /* The sequence above is many events; give the host a beat to
-         * digest it before the next step. */
-        delay = DMAC_TAP_MS * 4;
+    case ZMK_DMAC_STEP_UNICODE: {
+        /* Spelled out one event per tick: the host needs to see the
+         * activation chord and switch to hex entry before the digits
+         * land. Sent together, WinCompose typed "D1" as literal text. */
+        if (player.sub == 0) {
+            build_unicode(s->value);
+        }
+        if (player.sub < uni_len) {
+            const struct uni_ev *e = &uni_seq[player.sub++];
+            if (e->hold == 0) {
+                tap_now(e->key);
+            } else {
+                press_now(e->key, e->hold > 0);
+            }
+            delay = DMAC_UNI_MS;
+            if (player.sub >= uni_len) {
+                /* Sequence done: move on, and let the host commit it. */
+                player.sub = 0;
+                player.idx++;
+                delay = DMAC_UNI_MS * 2;
+            }
+        } else {
+            player.sub = 0;
+            player.idx++;
+        }
         break;
+    }
     case ZMK_DMAC_STEP_WAIT:
+        player.idx++;
         delay = s->value;
         break;
     default:
+        player.idx++;
         LOG_WRN("dmac: unknown step type %d", s->type);
         break;
     }
