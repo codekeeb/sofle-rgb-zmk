@@ -8,17 +8,3 @@ include:
     shield: sofle_right nice_oled
   - board: nice_nano_v2
     shield: settings_reset
-  # Debug: USB logs of the LEFT half (split central).
-  - board: nice_nano_v2
-    shield: sofle_left nice_oled
-    snippet: zmk-usb-logging
-    cmake-args: -DEXTRA_CONF_FILE=/tmp/zmk-config/config/sofle_encoder_debug.conf
-    artifact-name: sofle_left_usb_logging
-  # Debug: USB logs of the RIGHT half (split peripheral). The encoder
-  # transitions are logged by the half the encoder is wired to, so the
-  # right encoder only shows up here.
-  - board: nice_nano_v2
-    shield: sofle_right nice_oled
-    snippet: zmk-usb-logging
-    cmake-args: -DEXTRA_CONF_FILE=/tmp/zmk-config/config/sofle_encoder_debug.conf
-    artifact-name: sofle_right_usb_logging
