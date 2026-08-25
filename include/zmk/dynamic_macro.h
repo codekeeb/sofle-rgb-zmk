@@ -27,7 +27,26 @@ enum zmk_dmac_step_type {
     ZMK_DMAC_STEP_UNICODE = 1,
     /* Pause for value milliseconds. */
     ZMK_DMAC_STEP_WAIT = 2,
+    /* A cased pair: the low 21 bits are the lowercase codepoint, the top
+     * 11 bits hold the uppercase one as an offset from it. Shift picks
+     * which one is typed, the way ZMK_UNICODE_PAIR does in a hand
+     * written keymap -- without it, Shift+<key> had no second codepoint
+     * to reach for. */
+    ZMK_DMAC_STEP_UNICODE_PAIR = 3,
 };
+
+/* Pack/unpack helpers for ZMK_DMAC_STEP_UNICODE_PAIR.
+ *
+ * The offset is SIGNED: for Latin-1 the uppercase codepoint is lower
+ * than the lowercase one (n-tilde is 00F1 -> 00D1, so -0x20), which is
+ * why the 11 bits are sign-extended on the way out. Pairs whose offset
+ * does not fit -- eszett, 00DF -> 1E9E -- are stored as a plain
+ * ZMK_DMAC_STEP_UNICODE instead by whoever writes the slot. */
+#define ZMK_DMAC_PAIR_OFF_MIN (-1024)
+#define ZMK_DMAC_PAIR_OFF_MAX (1023)
+#define ZMK_DMAC_PAIR_LOWER(v) ((v) & 0x1FFFFF)
+#define ZMK_DMAC_PAIR_UPPER(v)                                                                         (ZMK_DMAC_PAIR_LOWER(v) +                                                                           (int32_t)((((v) >> 21) & 0x7FF) | ((((v) >> 21) & 0x400) ? ~0x7FF : 0)))
+#define ZMK_DMAC_PAIR_PACK(lo, up)                                                                     (((lo) & 0x1FFFFF) | ((uint32_t)(((up) - (lo)) & 0x7FF) << 21))
 
 struct zmk_dmac_step {
     uint8_t type;   /* enum zmk_dmac_step_type */

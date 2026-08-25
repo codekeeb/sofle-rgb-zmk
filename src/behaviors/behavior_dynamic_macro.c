@@ -39,6 +39,7 @@
 #include <zmk/behavior.h>
 #include <zmk/keys.h>
 #include <zmk/hid.h>
+#include <dt-bindings/zmk/modifiers.h>
 #include <zmk/event_manager.h>
 #include <zmk/events/keycode_state_changed.h>
 #include <zmk/dynamic_macro.h>
@@ -218,12 +219,22 @@ static void dmac_work_cb(struct k_work *work) {
         player.idx++;
         tap_now(s->value);
         break;
+    case ZMK_DMAC_STEP_UNICODE_PAIR:
     case ZMK_DMAC_STEP_UNICODE: {
         /* Spelled out one event per tick: the host needs to see the
          * activation chord and switch to hex entry before the digits
          * land. Sent together, WinCompose typed "D1" as literal text. */
         if (player.sub == 0) {
-            build_unicode(s->value);
+            uint32_t cp = s->value;
+            if (s->type == ZMK_DMAC_STEP_UNICODE_PAIR) {
+                /* Shift picks the case, like ZMK_UNICODE_PAIR does. It
+                 * has to be read BEFORE the mask goes up, because the
+                 * mask is exactly what hides it from the report. */
+                bool shifted = zmk_hid_get_explicit_mods() & (MOD_LSFT | MOD_RSFT);
+                cp = shifted ? ZMK_DMAC_PAIR_UPPER(s->value)
+                             : ZMK_DMAC_PAIR_LOWER(s->value);
+            }
+            build_unicode(cp);
         }
         if (player.sub < uni_len) {
             const struct uni_ev *e = &uni_seq[player.sub++];
