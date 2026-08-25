@@ -117,20 +117,27 @@ static uint32_t hex_keycode(uint8_t nibble) {
  * sees them as separate keystrokes. */
 struct uni_ev {
     uint32_t key;
-    int8_t hold; /* 1 press, -1 release, 0 tap */
+    int8_t hold;  /* 1 press, -1 release, 0 tap */
+    bool chord;   /* part of the activation chord: never mask this one */
 };
 
 #define UNI_MAX_EVENTS 16
 static struct uni_ev uni_seq[UNI_MAX_EVENTS];
 static uint8_t uni_len;
 
-static void uni_add(uint32_t key, int8_t hold) {
+static void uni_add_ex(uint32_t key, int8_t hold, bool chord) {
     if (uni_len < UNI_MAX_EVENTS) {
         uni_seq[uni_len].key = key;
         uni_seq[uni_len].hold = hold;
+        uni_seq[uni_len].chord = chord;
         uni_len++;
     }
 }
+
+/* Default: a normal key, safe to mask. */
+static void uni_add(uint32_t key, int8_t hold) { uni_add_ex(key, hold, false); }
+/* The activation chord: must reach the host exactly as sent. */
+static void uni_add_chord(uint32_t key, int8_t hold) { uni_add_ex(key, hold, true); }
 
 /* Queues the hex digits, most significant nibble first.
  *
@@ -166,16 +173,16 @@ static void build_unicode(uint32_t cp) {
          * Right Alt. Holding RAlt across the "u" sends AltGr+U instead,
          * which is a different chord: WinCompose never enters compose
          * mode and the digits land as literal text ("00f1"). */
-        uni_add(k_ralt, 0);
+        uni_add_chord(k_ralt, 0);
         uni_add(k_u, 0);
         uni_add_hex(cp);
         uni_add(k_enter, 0);
         break;
     case ZMK_DMAC_UNICODE_MACOS:
         /* "Unicode Hex Input" layout: Option held across the digits. */
-        uni_add(k_lalt, 1);
+        uni_add_chord(k_lalt, 1);
         uni_add_hex(cp);
-        uni_add(k_lalt, -1);
+        uni_add_chord(k_lalt, -1);
         break;
     case ZMK_DMAC_UNICODE_LINUX:
     default:
@@ -183,11 +190,11 @@ static void build_unicode(uint32_t cp) {
          * Space rather than Enter, matching zmk-helpers: if the host
          * never entered hex mode, a stray space is far less disruptive
          * than a stray newline (which submits forms and chat boxes). */
-        uni_add(k_lctrl, 1);
-        uni_add(k_lshft, 1);
-        uni_add(k_u, 0);
-        uni_add(k_lshft, -1);
-        uni_add(k_lctrl, -1);
+        uni_add_chord(k_lctrl, 1);
+        uni_add_chord(k_lshft, 1);
+        uni_add_chord(k_u, 0);
+        uni_add_chord(k_lshft, -1);
+        uni_add_chord(k_lctrl, -1);
         uni_add_hex(cp);
         uni_add(k_space, 0);
         break;
@@ -216,15 +223,25 @@ static void dmac_work_cb(struct k_work *work) {
          * activation chord and switch to hex entry before the digits
          * land. Sent together, WinCompose typed "D1" as literal text. */
         if (player.sub == 0) {
-            /* Hide whatever the user is physically holding. Pressing
-             * Shift+<macro key> otherwise leaves Shift in the report
-             * while the hex digits are typed, and "u00F1" comes out as
-             * "U))F!" -- the shifted face of each digit. */
-            zmk_hid_masked_modifiers_set(0xFF);
             build_unicode(s->value);
         }
         if (player.sub < uni_len) {
             const struct uni_ev *e = &uni_seq[player.sub++];
+            /* Hide the modifiers the user is physically holding for
+             * every event EXCEPT the activation chord.
+             *
+             * Without masking, Shift+<macro key> leaves Shift in the
+             * report and "u00F1" arrives as "U))F!" -- the shifted face
+             * of each digit. Masking the whole sequence is just as
+             * broken the other way: the chord IS made of modifiers
+             * (AltGr for WinCompose, Ctrl+Shift for IBus), so hiding it
+             * means the host never enters hex-entry mode and the digits
+             * land as plain text. Only the chord is exempt. */
+            if (e->chord) {
+                zmk_hid_masked_modifiers_clear();
+            } else {
+                zmk_hid_masked_modifiers_set(0xFF);
+            }
             if (e->hold == 0) {
                 tap_now(e->key);
             } else {
