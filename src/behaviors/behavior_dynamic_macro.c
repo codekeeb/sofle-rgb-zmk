@@ -196,6 +196,9 @@ static void build_unicode(uint32_t cp) {
 
 static void dmac_work_cb(struct k_work *work) {
     if (player.idx >= player.len) {
+        /* Belt and braces: a macro that ends while a Unicode step was
+         * mid-flight must not leave the user's modifiers masked. */
+        zmk_hid_masked_modifiers_clear();
         player.busy = false;
         return;
     }
@@ -213,6 +216,11 @@ static void dmac_work_cb(struct k_work *work) {
          * activation chord and switch to hex entry before the digits
          * land. Sent together, WinCompose typed "D1" as literal text. */
         if (player.sub == 0) {
+            /* Hide whatever the user is physically holding. Pressing
+             * Shift+<macro key> otherwise leaves Shift in the report
+             * while the hex digits are typed, and "u00F1" comes out as
+             * "U))F!" -- the shifted face of each digit. */
+            zmk_hid_masked_modifiers_set(0xFF);
             build_unicode(s->value);
         }
         if (player.sub < uni_len) {
@@ -225,11 +233,13 @@ static void dmac_work_cb(struct k_work *work) {
             delay = DMAC_UNI_MS;
             if (player.sub >= uni_len) {
                 /* Sequence done: move on, and let the host commit it. */
+                zmk_hid_masked_modifiers_clear();
                 player.sub = 0;
                 player.idx++;
                 delay = DMAC_UNI_MS * 2;
             }
         } else {
+            zmk_hid_masked_modifiers_clear();
             player.sub = 0;
             player.idx++;
         }
@@ -387,6 +397,9 @@ static int on_keymap_binding_pressed(struct zmk_behavior_binding *binding,
     player.len = slots[slot].len;
     player.idx = 0;
     player.sub = 0;
+    /* Start from a clean slate: an interrupted macro may have left a
+     * mask in place. */
+    zmk_hid_masked_modifiers_clear();
     player.busy = true;
     k_work_schedule(&player.work, K_NO_WAIT);
 
