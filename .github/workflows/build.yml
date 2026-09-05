@@ -21,8 +21,24 @@ jobs:
           name: firmware
           path: firmware
 
+      # Un unico zip con los tres .uf2 dentro (las dos mitades y el
+      # settings_reset). Antes se subian sueltos y habia que rehacer el
+      # release a mano para empaquetarlos.
+      - name: Package firmware into a single zip
+        run: |
+          cd firmware
+          # Los artefactos traen espacios en el nombre ("sofle_left nice_oled"):
+          # se normalizan a puntos, como en los releases anteriores.
+          for f in *.uf2; do
+            n="${f// /.}"
+            [ "$f" = "$n" ] || mv "$f" "$n"
+          done
+          zip -j "../SofleRGB-MX-${GITHUB_REF_NAME}.zip" *.uf2
+          cd ..
+          unzip -l "SofleRGB-MX-${GITHUB_REF_NAME}.zip"
+
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
         with:
-          files: firmware/*
+          files: SofleRGB-MX-${{ github.ref_name }}.zip
           generate_release_notes: true
