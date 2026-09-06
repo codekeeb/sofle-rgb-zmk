@@ -41,6 +41,19 @@
             #binding-cells = <1>;
         };
 
+        // Vista de WPM de la pantalla IZQUIERDA (bongo cat, luna,
+        // responsive, numero, velocimetro, grafico). &wpmview cicla;
+        // &wpmset la fija por indice y lo usa el RPC de ZMK Studio.
+        wpmview: wpmview {
+            compatible = "zmk,behavior-wpm-view";
+            #binding-cells = <0>;
+        };
+
+        wpmset: wpmset {
+            compatible = "zmk,behavior-wpm-set";
+            #binding-cells = <1>;
+        };
+
         // Macros editables en caliente (CODEKEEB PATCH, ver
         // src/behaviors/behavior_dynamic_macro.c). &dmac N reproduce la
         // ranura N, cuyo contenido se escribe desde el editor web y vive
