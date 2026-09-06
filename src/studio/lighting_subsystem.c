@@ -32,9 +32,18 @@ LOG_MODULE_DECLARE(zmk_studio, CONFIG_ZMK_STUDIO_LOG_LEVEL);
 #define RGB_DEV DEVICE_DT_GET(DT_CHOSEN(zmk_rgb_fx))
 #endif
 
-#if __has_include(<nice_oled/oled_anim.h>)
-#include <nice_oled/oled_anim.h>
+/* La animacion del OLED la aporta el modulo zmk-nice-oled. Antes esto
+ * dependia de __has_include, pero el modulo exponia su include/ solo a
+ * su propia libreria, asi que la cabecera no se encontraba y los dos
+ * handlers del OLED se compilaban vacios EN SILENCIO: la web mandaba la
+ * peticion, recibia "false" y la animacion no cambiaba nunca.
+ * Ahora se decide por Kconfig, que es lo fiable, y las funciones se
+ * declaran aqui por si el include path no llega. */
+#if IS_ENABLED(CONFIG_NICE_OLED_ON)
 #define HAS_OLED_ANIM 1
+#define NICE_OLED_ANIM_COUNT 6
+uint8_t nice_oled_anim_get(void);
+int nice_oled_anim_set(uint8_t idx);
 #endif
 
 /* Los handlers viven en el subsistema `keymap`, que ZMK ya registra: el
