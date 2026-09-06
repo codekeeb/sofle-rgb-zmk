@@ -15,6 +15,10 @@
 
 #define DT_DRV_COMPAT zmk_behavior_sleep_cfg
 
+/* devicetree.h ANTES del #if: DT_HAS_COMPAT_STATUS_OKAY vive ahi, y el
+ * preprocesador no puede evaluarlo si aun no se ha definido (mismo
+ * tropiezo que documenta behavior_mouse_wheel.c con IS_ENABLED). */
+#include <zephyr/devicetree.h>
 #include <zephyr/sys/util_macro.h>
 
 #if DT_HAS_COMPAT_STATUS_OKAY(DT_DRV_COMPAT)

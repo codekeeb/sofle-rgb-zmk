@@ -54,6 +54,10 @@ int nice_oled_anim_set(uint8_t idx);
  * ciclo compilado (el central: es la que habla con Studio), de ahi que
  * dependa de su propio Kconfig y no de NICE_OLED_ON. Se declara aqui
  * por el mismo motivo que arriba. */
+#if IS_ENABLED(CONFIG_CODEKEEB_SLEEP)
+#include <zmk/codekeeb_sleep.h>
+#endif
+
 #if IS_ENABLED(CONFIG_NICE_OLED_WPM_VIEW_SELECTABLE)
 #define HAS_WPM_VIEW 1
 #define NICE_OLED_WPM_VIEW_COUNT 5
@@ -94,6 +98,12 @@ static zmk_studio_Response get_lighting(const zmk_studio_Request *req) {
     state.wpm_view_available = true;
     state.wpm_view = nice_oled_wpm_view_get();
     state.wpm_view_count = NICE_OLED_WPM_VIEW_COUNT;
+#endif
+
+#if IS_ENABLED(CONFIG_CODEKEEB_SLEEP)
+    state.sleep_available = true;
+    state.sleep_enabled = zmk_codekeeb_sleep_enabled();
+    state.sleep_minutes = zmk_codekeeb_sleep_minutes();
 #endif
 
     return LIGHTING_RESPONSE(get_lighting, state);
@@ -179,7 +189,41 @@ static zmk_studio_Response set_wpm_view(const zmk_studio_Request *req) {
 #endif
 }
 
+/* El ajuste es local a cada mitad (las dos vigilan su inactividad), asi
+ * que ademas de aplicarlo aqui hay que llevarlo al periferico, igual que
+ * set_animation hace con &oledset. */
+static zmk_studio_Response set_sleep(const zmk_studio_Request *req) {
+#if IS_ENABLED(CONFIG_CODEKEEB_SLEEP)
+    const zmk_keymap_SetSleepRequest *r = &req->subsystem.keymap.request_type.set_sleep;
+
+    if (zmk_codekeeb_sleep_set(r->enabled, (uint16_t)r->minutes) != 0) {
+        return LIGHTING_RESPONSE(set_sleep, false);
+    }
+
+#if IS_ENABLED(CONFIG_ZMK_SPLIT_ROLE_CENTRAL)
+    struct zmk_behavior_binding binding = {
+        .behavior_dev = "sleepcfg",
+        .param1 = r->enabled ? 1 : 0,
+        .param2 = r->minutes,
+    };
+    struct zmk_behavior_binding_event event = {
+        .position = 0,
+        .timestamp = k_uptime_get(),
+    };
+
+    for (uint8_t source = 0; source < ZMK_SPLIT_CENTRAL_PERIPHERAL_COUNT; source++) {
+        zmk_split_central_invoke_behavior(source, &binding, event, true);
+    }
+#endif
+
+    return LIGHTING_RESPONSE(set_sleep, true);
+#else
+    return LIGHTING_RESPONSE(set_sleep, false);
+#endif
+}
+
 ZMK_RPC_SUBSYSTEM_HANDLER(keymap, get_lighting, ZMK_STUDIO_RPC_HANDLER_UNSECURED);
 ZMK_RPC_SUBSYSTEM_HANDLER(keymap, set_rgb, ZMK_STUDIO_RPC_HANDLER_SECURED);
 ZMK_RPC_SUBSYSTEM_HANDLER(keymap, set_animation, ZMK_STUDIO_RPC_HANDLER_SECURED);
 ZMK_RPC_SUBSYSTEM_HANDLER(keymap, set_wpm_view, ZMK_STUDIO_RPC_HANDLER_SECURED);
+ZMK_RPC_SUBSYSTEM_HANDLER(keymap, set_sleep, ZMK_STUDIO_RPC_HANDLER_SECURED);
