@@ -50,6 +50,17 @@ uint8_t nice_oled_anim_get(void);
 int nice_oled_anim_set(uint8_t idx);
 #endif
 
+/* La vista de WPM solo existe en la mitad que lleva la pantalla con el
+ * ciclo compilado (el central: es la que habla con Studio), de ahi que
+ * dependa de su propio Kconfig y no de NICE_OLED_ON. Se declara aqui
+ * por el mismo motivo que arriba. */
+#if IS_ENABLED(CONFIG_NICE_OLED_WPM_VIEW_SELECTABLE)
+#define HAS_WPM_VIEW 1
+#define NICE_OLED_WPM_VIEW_COUNT 5
+uint8_t nice_oled_wpm_view_get(void);
+int nice_oled_wpm_view_set(uint8_t idx);
+#endif
+
 /* Los handlers viven en el subsistema `keymap`, que ZMK ya registra: el
  * CMakeLists de ZMK lleva cableada la lista de .proto que compila, asi
  * que un subsistema nuevo habria exigido parchear ZMK. Los parches
@@ -77,6 +88,12 @@ static zmk_studio_Response get_lighting(const zmk_studio_Request *req) {
     state.animation_available = true;
     state.animation = nice_oled_anim_get();
     state.animation_count = NICE_OLED_ANIM_COUNT;
+#endif
+
+#if IS_ENABLED(HAS_WPM_VIEW)
+    state.wpm_view_available = true;
+    state.wpm_view = nice_oled_wpm_view_get();
+    state.wpm_view_count = NICE_OLED_WPM_VIEW_COUNT;
 #endif
 
     return LIGHTING_RESPONSE(get_lighting, state);
@@ -146,6 +163,23 @@ static zmk_studio_Response set_animation(const zmk_studio_Request *req) {
 
 /* Reading the state is harmless, so it stays open; the two writes need
  * the keyboard unlocked, like every other change Studio can make. */
+/* A diferencia de set_animation, aqui no hay relay: la pantalla del
+ * ciclo de WPM es la del propio central, que es quien atiende el RPC. */
+static zmk_studio_Response set_wpm_view(const zmk_studio_Request *req) {
+#if IS_ENABLED(HAS_WPM_VIEW)
+    uint32_t idx = req->subsystem.keymap.request_type.set_wpm_view;
+
+    if (idx >= NICE_OLED_WPM_VIEW_COUNT) {
+        return LIGHTING_RESPONSE(set_wpm_view, false);
+    }
+
+    return LIGHTING_RESPONSE(set_wpm_view, nice_oled_wpm_view_set((uint8_t)idx) == 0);
+#else
+    return LIGHTING_RESPONSE(set_wpm_view, false);
+#endif
+}
+
 ZMK_RPC_SUBSYSTEM_HANDLER(keymap, get_lighting, ZMK_STUDIO_RPC_HANDLER_UNSECURED);
 ZMK_RPC_SUBSYSTEM_HANDLER(keymap, set_rgb, ZMK_STUDIO_RPC_HANDLER_SECURED);
 ZMK_RPC_SUBSYSTEM_HANDLER(keymap, set_animation, ZMK_STUDIO_RPC_HANDLER_SECURED);
+ZMK_RPC_SUBSYSTEM_HANDLER(keymap, set_wpm_view, ZMK_STUDIO_RPC_HANDLER_SECURED);
