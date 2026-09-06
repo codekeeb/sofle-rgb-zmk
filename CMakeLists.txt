@@ -51,3 +51,14 @@ endif()
 if(CONFIG_ZMK_STUDIO)
   target_sources(app PRIVATE src/studio/lighting_subsystem.c)
 endif()
+
+# Deep sleep con plazo en flash. Se compila en las dos mitades.
+if(CONFIG_CODEKEEB_SLEEP)
+  target_include_directories(app PRIVATE include)
+  target_sources(app PRIVATE src/codekeeb_sleep.c)
+endif()
+
+if(CONFIG_ZMK_BEHAVIOR_SLEEP_CFG)
+  target_include_directories(app PRIVATE include)
+  target_sources(app PRIVATE src/behaviors/behavior_sleep_cfg.c)
+endif()

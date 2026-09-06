@@ -54,6 +54,16 @@
             #binding-cells = <1>;
         };
 
+        // Relay interno central->periferico del ajuste de deep sleep
+        // (activado + minutos). Como &oledset, no va en ninguna tecla:
+        // lo invoca el handler RPC. Hace falta porque cada mitad vigila
+        // su propia inactividad, asi que el ajuste hay que llevarlo a
+        // las dos o el periferico se queda con el plazo viejo.
+        sleepcfg: sleepcfg {
+            compatible = "zmk,behavior-sleep-cfg";
+            #binding-cells = <2>;
+        };
+
         // Macros editables en caliente (CODEKEEB PATCH, ver
         // src/behaviors/behavior_dynamic_macro.c). &dmac N reproduce la
         // ranura N, cuyo contenido se escribe desde el editor web y vive

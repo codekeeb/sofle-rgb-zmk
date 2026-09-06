@@ -123,3 +123,26 @@ config ZMK_SENSOR_ROTATE_DYNAMIC
       (unlike stock ZMK's compile-time-only sensor-bindings) and persists
       via settings, same as regular keys. See
       src/studio/sensor_binding_subsystem.c for the RPC handlers.
+
+# CODEKEEB PATCH: deep sleep con plazo editable en caliente.
+# Se activa en las DOS mitades: cada una vigila su propia inactividad,
+# porque si solo durmiera la central el periferico seguiria gastando.
+config CODEKEEB_SLEEP
+    bool "Deep sleep con tiempo configurable desde ZMK Studio"
+    depends on HAS_POWEROFF
+    select ZMK_PM
+    select PM_DEVICE
+    select ZMK_PM_DEVICE_SUSPEND_RESUME
+    select POWEROFF
+    select SETTINGS
+    help
+      Duerme el teclado tras N minutos de inactividad, con N guardado en
+      flash y editable desde la web. ZMK_SLEEP hace lo mismo pero con el
+      plazo fijado al compilar (CONFIG_ZMK_IDLE_SLEEP_TIMEOUT).
+
+DT_COMPAT_ZMK_BEHAVIOR_SLEEP_CFG := zmk,behavior-sleep-cfg
+
+config ZMK_BEHAVIOR_SLEEP_CFG
+    bool
+    default $(dt_compat_enabled,$(DT_COMPAT_ZMK_BEHAVIOR_SLEEP_CFG))
+    depends on CODEKEEB_SLEEP
