@@ -44,3 +44,10 @@ endif()
 if(CONFIG_ZMK_BEHAVIOR_DYNAMIC_MACRO AND CONFIG_ZMK_STUDIO)
   target_sources(app PRIVATE src/studio/macro_subsystem.c)
 endif()
+
+# Lighting over RPC (RGB + OLED animation). Studio only runs on the
+# central, and the handlers compile out on their own when the board has
+# no RGB or no OLED module, so CONFIG_ZMK_STUDIO is the only gate needed.
+if(CONFIG_ZMK_STUDIO)
+  target_sources(app PRIVATE src/studio/lighting_subsystem.c)
+endif()

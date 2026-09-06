@@ -269,6 +269,28 @@ int zmk_rgb_fx_control_handle_command(const struct device *dev, uint8_t command,
 
         data->brightness++;
         break;
+    /* CODEKEEB: absolute setters (ZMK Studio). Same clamping rules as the
+     * relative commands -- brightness never reaches 0 here, because
+     * turning the lighting off is the TOGGLE's job and a persisted 0 used
+     * to leave the board black across reflashes. */
+    case RGB_FX_CMD_SET_BRIGHTNESS:
+        data->brightness = CLAMP(param, 1, config->brightness_steps);
+        break;
+    case RGB_FX_CMD_SET_HUE:
+        /* param is hue/2 so the whole 0..359 range fits in one byte. */
+        zmk_rgb_fx_hue_offset = (param * 2) % 360;
+        data->hue_offset = zmk_rgb_fx_hue_offset;
+        break;
+    case RGB_FX_CMD_SET_SPEED:
+        zmk_rgb_fx_speed_set(MIN(param, 4));
+        data->speed_step = zmk_rgb_fx_speed_get();
+        break;
+    case RGB_FX_CMD_SET_ACTIVE:
+        data->active = !!param;
+        if (data->active && data->brightness == 0) {
+            data->brightness = 1;
+        }
+        break;
     }
 
     fx_control_group_refresh(dev);
@@ -284,6 +306,27 @@ int zmk_rgb_fx_control_handle_command(const struct device *dev, uint8_t command,
     /* Push the resulting absolute state to the peripheral right away. */
     fx_control_group_sync_push_now();
 #endif
+
+    return 0;
+}
+
+/* CODEKEEB: read back the current state, so a client can show what the
+ * keyboard is really doing rather than assuming. */
+int zmk_rgb_fx_control_get_state(const struct device *dev, struct zmk_rgb_fx_state *out) {
+    if (!dev || !out) {
+        return -ENODEV;
+    }
+
+    const struct fx_control_group_config *config = dev->config;
+    struct fx_control_group_data *data = dev->data;
+
+    out->active = data->active;
+    out->brightness = data->brightness;
+    out->brightness_max = config->brightness_steps;
+    out->effect = (uint8_t)data->current_fx_idx;
+    out->effect_count = (uint8_t)config->fx_size;
+    out->hue = data->hue_offset;
+    out->speed = data->speed_step;
 
     return 0;
 }
