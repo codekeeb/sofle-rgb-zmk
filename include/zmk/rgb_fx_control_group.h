@@ -55,3 +55,23 @@ struct zmk_rgb_fx_state {
 };
 
 int zmk_rgb_fx_control_get_state(const struct device *dev, struct zmk_rgb_fx_state *out);
+
+/**
+ * @brief Apply several values at once.
+ *
+ * Sending them as separate commands meant one refresh, one flash write
+ * and one sync to the peripheral EACH, several of them within a few
+ * milliseconds, and a SELECT with an out-of-range index aborted the rest.
+ * This applies everything first and settles once.
+ *
+ * Fields with a negative value are left untouched.
+ */
+struct zmk_rgb_fx_set {
+    int16_t active;      /* 0/1, or <0 to leave as is */
+    int16_t brightness;
+    int16_t effect;
+    int16_t hue;         /* 0..359 */
+    int16_t speed;
+};
+
+int zmk_rgb_fx_control_apply(const struct device *dev, const struct zmk_rgb_fx_set *set);

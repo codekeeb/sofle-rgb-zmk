@@ -310,6 +310,64 @@ int zmk_rgb_fx_control_handle_command(const struct device *dev, uint8_t command,
     return 0;
 }
 
+/* CODEKEEB: apply several values in one go.
+ *
+ * Going through handle_command once per field meant a refresh, a flash
+ * write and a push to the peripheral EACH -- five of them inside a few
+ * milliseconds when a slider moves -- and a SELECT with a bad index
+ * returned early, so everything after it was silently dropped. That is
+ * why toggling the lighting worked from the editor but changing the
+ * effect, brightness, hue or speed did not.
+ *
+ * Here the state is updated first and settled once at the end. */
+int zmk_rgb_fx_control_apply(const struct device *dev, const struct zmk_rgb_fx_set *set) {
+    if (!dev || !set) {
+        return -ENODEV;
+    }
+
+    const struct fx_control_group_config *config = dev->config;
+    struct fx_control_group_data *data = dev->data;
+
+    if (set->active >= 0) {
+        data->active = !!set->active;
+        if (data->active && data->brightness == 0) {
+            data->brightness = 1;
+        }
+    }
+
+    if (set->effect >= 0 && set->effect < (int16_t)config->fx_size) {
+        fx_control_group_set_idx(dev, (size_t)set->effect);
+    }
+
+    if (set->brightness >= 0) {
+        data->brightness = CLAMP(set->brightness, 1, config->brightness_steps);
+    }
+
+    if (set->hue >= 0) {
+        zmk_rgb_fx_hue_offset = set->hue % 360;
+        data->hue_offset = zmk_rgb_fx_hue_offset;
+    }
+
+    if (set->speed >= 0) {
+        zmk_rgb_fx_speed_set(MIN(set->speed, 4));
+        data->speed_step = zmk_rgb_fx_speed_get();
+    }
+
+    fx_control_group_refresh(dev);
+
+#if IS_ENABLED(CONFIG_SETTINGS)
+    fx_control_group_save_settings(dev);
+#endif
+
+    zmk_rgb_fx_request_frames(1);
+
+#if IS_ENABLED(CONFIG_ZMK_SPLIT_ROLE_CENTRAL) && DT_HAS_CHOSEN(zmk_rgb_fx)
+    fx_control_group_sync_push_now();
+#endif
+
+    return 0;
+}
+
 /* CODEKEEB: read back the current state, so a client can show what the
  * keyboard is really doing rather than assuming. */
 int zmk_rgb_fx_control_get_state(const struct device *dev, struct zmk_rgb_fx_state *out) {

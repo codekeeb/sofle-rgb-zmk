@@ -75,26 +75,19 @@ static zmk_studio_Response set_rgb(const zmk_studio_Request *req) {
     const struct device *dev = RGB_DEV;
 
     /* Only the fields the client actually sent are applied, so changing
-     * the brightness alone does not disturb the rest. */
-    if (r->has_active) {
-        zmk_rgb_fx_control_handle_command(dev, RGB_FX_CMD_SET_ACTIVE, r->active ? 1 : 0);
-    }
-    if (r->has_effect) {
-        zmk_rgb_fx_control_handle_command(dev, RGB_FX_CMD_SELECT, (uint8_t)r->effect);
-    }
-    if (r->has_brightness) {
-        zmk_rgb_fx_control_handle_command(dev, RGB_FX_CMD_SET_BRIGHTNESS, (uint8_t)r->brightness);
-    }
-    if (r->has_hue) {
-        /* The hue travels halved: 0..359 does not fit in the byte the
-         * command parameter is. */
-        zmk_rgb_fx_control_handle_command(dev, RGB_FX_CMD_SET_HUE, (uint8_t)((r->hue % 360) / 2));
-    }
-    if (r->has_speed) {
-        zmk_rgb_fx_control_handle_command(dev, RGB_FX_CMD_SET_SPEED, (uint8_t)r->speed);
-    }
+     * the brightness alone does not disturb the rest. They go in a single
+     * apply() rather than one command each: separate commands meant a
+     * flash write and a sync to the peripheral per field, and a bad
+     * effect index aborted everything after it. */
+    struct zmk_rgb_fx_set set = {
+        .active = r->has_active ? (r->active ? 1 : 0) : -1,
+        .brightness = r->has_brightness ? (int16_t)r->brightness : -1,
+        .effect = r->has_effect ? (int16_t)r->effect : -1,
+        .hue = r->has_hue ? (int16_t)(r->hue % 360) : -1,
+        .speed = r->has_speed ? (int16_t)r->speed : -1,
+    };
 
-    return LIGHTING_RESPONSE(set_rgb, true);
+    return LIGHTING_RESPONSE(set_rgb, zmk_rgb_fx_control_apply(dev, &set) == 0);
 #else
     return LIGHTING_RESPONSE(set_rgb, false);
 #endif
