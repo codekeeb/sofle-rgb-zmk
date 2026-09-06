@@ -31,6 +31,16 @@
             #binding-cells = <0>;
         };
 
+        // Relay interno central->periferico: fija la animacion por
+        // indice. No se pone en ninguna tecla; lo invoca el handler RPC
+        // de ZMK Studio, igual que el RGB usa &rgbsync. Sin esto, la web
+        // cambiaba la animacion solo en la mitad central, que no tiene
+        // la pantalla animada, y no se veia nada.
+        oledset: oledset {
+            compatible = "zmk,behavior-oled-set";
+            #binding-cells = <1>;
+        };
+
         // Macros editables en caliente (CODEKEEB PATCH, ver
         // src/behaviors/behavior_dynamic_macro.c). &dmac N reproduce la
         // ranura N, cuyo contenido se escribe desde el editor web y vive

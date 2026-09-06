@@ -26,6 +26,10 @@ LOG_MODULE_DECLARE(zmk_studio, CONFIG_ZMK_STUDIO_LOG_LEVEL);
 #include <zephyr/devicetree.h>
 
 #include <zmk/studio/rpc.h>
+#include <zmk/behavior.h>
+#if IS_ENABLED(CONFIG_ZMK_SPLIT_ROLE_CENTRAL)
+#include <zmk/split/bluetooth/central.h>
+#endif
 
 #if DT_HAS_CHOSEN(zmk_rgb_fx)
 #include <zmk/rgb_fx_control_group.h>
@@ -106,7 +110,35 @@ static zmk_studio_Response set_animation(const zmk_studio_Request *req) {
 #if IS_ENABLED(HAS_OLED_ANIM)
     uint32_t idx = req->subsystem.keymap.request_type.set_animation;
 
-    return LIGHTING_RESPONSE(set_animation, nice_oled_anim_set((uint8_t)idx) == 0);
+    if (idx >= NICE_OLED_ANIM_COUNT) {
+        return LIGHTING_RESPONSE(set_animation, false);
+    }
+
+    /* La pantalla animada la lleva el PERIFERICO, y el estado de la
+     * animacion es local a cada mitad: llamar aqui a
+     * nice_oled_anim_set() solo cambiaba la copia del central, que no
+     * tiene esa pantalla, asi que desde Studio no se veia nada. La
+     * tecla &oledanim si funciona porque ZMK la reenvia (locality
+     * global). Se hace lo mismo a mano, igual que el RGB con "rgbsync":
+     * se aplica en local y se invoca el behavior en el periferico. */
+    nice_oled_anim_set((uint8_t)idx);
+
+#if IS_ENABLED(CONFIG_ZMK_SPLIT_ROLE_CENTRAL)
+    struct zmk_behavior_binding binding = {
+        .behavior_dev = "oledset",
+        .param1 = idx,
+    };
+    struct zmk_behavior_binding_event event = {
+        .position = 0,
+        .timestamp = k_uptime_get(),
+    };
+
+    for (uint8_t source = 0; source < ZMK_SPLIT_CENTRAL_PERIPHERAL_COUNT; source++) {
+        zmk_split_central_invoke_behavior(source, &binding, event, true);
+    }
+#endif
+
+    return LIGHTING_RESPONSE(set_animation, true);
 #else
     return LIGHTING_RESPONSE(set_animation, false);
 #endif
