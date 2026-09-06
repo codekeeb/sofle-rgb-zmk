@@ -28,7 +28,7 @@ LOG_MODULE_DECLARE(zmk_studio, CONFIG_ZMK_STUDIO_LOG_LEVEL);
 #include <zmk/studio/rpc.h>
 #include <zmk/behavior.h>
 #if IS_ENABLED(CONFIG_ZMK_SPLIT_ROLE_CENTRAL)
-#include <zmk/split/bluetooth/central.h>
+#include <zmk/split/central.h>
 #endif
 
 #if DT_HAS_CHOSEN(zmk_rgb_fx)
