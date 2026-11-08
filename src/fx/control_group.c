@@ -49,6 +49,10 @@ struct fx_control_group_data {
     size_t current_fx_idx;
     uint16_t hue_offset;
     uint8_t speed_step;
+    /* Fits in the struct's trailing padding byte, so the saved blob keeps
+     * its size and settings written by older firmware still load (the
+     * byte they carry is masked to 0..3 on load). */
+    uint8_t rotation;
 };
 
 /*
@@ -122,15 +126,13 @@ static void fx_control_group_set_idx(const struct device *dev, size_t idx) {
 }
 
 /* Packed absolute state carried in the rgbsync behavior's param1. */
-#define FX_SYNC_PACK(active, idx, hue, speed, brt)                                                 \
-    (((active) ? 1 : 0) | (((uint32_t)(idx) & 0x1f) << 1) |                                        \
-     ((((uint32_t)(hue) / 20) & 0x1f) << 6) | (((uint32_t)(speed) & 0x7) << 11) |                  \
-     (((uint32_t)(brt) & 0x7) << 14))
+#define FX_SYNC_PACK(active, idx, hue, speed, brt, rot)                                                (((active) ? 1 : 0) | (((uint32_t)(idx) & 0x1f) << 1) |                                             ((((uint32_t)(hue) / 20) & 0x1f) << 6) | (((uint32_t)(speed) & 0x7) << 11) |                       (((uint32_t)(brt) & 0x7) << 14) | (((uint32_t)(rot) & 0x3) << 17))
 #define FX_SYNC_ACTIVE(p) ((p) & 0x1)
 #define FX_SYNC_IDX(p) (((p) >> 1) & 0x1f)
 #define FX_SYNC_HUE(p) ((((p) >> 6) & 0x1f) * 20)
 #define FX_SYNC_SPEED(p) (((p) >> 11) & 0x7)
 #define FX_SYNC_BRT(p) (((p) >> 14) & 0x7)
+#define FX_SYNC_ROT(p) (((p) >> 17) & 0x3)
 
 #if IS_ENABLED(CONFIG_ZMK_SPLIT_ROLE_CENTRAL) && DT_HAS_CHOSEN(zmk_rgb_fx)
 static void fx_control_group_sync_push_now(void);
@@ -151,6 +153,8 @@ static int fx_control_group_load_settings(const struct device *dev, const char *
         if (rc >= 0) {
             zmk_rgb_fx_hue_offset = ((struct fx_control_group_data *)dev->data)->hue_offset % 360;
             zmk_rgb_fx_speed_set(((struct fx_control_group_data *)dev->data)->speed_step);
+            ((struct fx_control_group_data *)dev->data)->rotation &= 0x3;
+            zmk_rgb_fx_rotation_set(((struct fx_control_group_data *)dev->data)->rotation);
             /* Sanitize saved state: a persisted brightness of 0 leaves the RGB
              * black forever (render x0) even if the toggle is pressed. */
             const struct fx_control_group_config *config = dev->config;
@@ -253,6 +257,14 @@ int zmk_rgb_fx_control_handle_command(const struct device *dev, uint8_t command,
         }
         data->speed_step = zmk_rgb_fx_speed_get();
         break;
+    case RGB_FX_CMD_ROTATE:
+        data->rotation = (data->rotation + 1) & 0x3;
+        zmk_rgb_fx_rotation_set(data->rotation);
+        break;
+    case RGB_FX_CMD_SET_ROTATION:
+        data->rotation = param & 0x3;
+        zmk_rgb_fx_rotation_set(data->rotation);
+        break;
     case RGB_FX_CMD_DIM:
         /* Minimum 1: turning off is the TOGGLE's job. A persisted brightness 0
          * left the keyboard black forever across reflashes. */
@@ -353,6 +365,11 @@ int zmk_rgb_fx_control_apply(const struct device *dev, const struct zmk_rgb_fx_s
         data->speed_step = zmk_rgb_fx_speed_get();
     }
 
+    if (set->rotation >= 0) {
+        data->rotation = set->rotation & 0x3;
+        zmk_rgb_fx_rotation_set(data->rotation);
+    }
+
     fx_control_group_refresh(dev);
 
 #if IS_ENABLED(CONFIG_SETTINGS)
@@ -385,6 +402,7 @@ int zmk_rgb_fx_control_get_state(const struct device *dev, struct zmk_rgb_fx_sta
     out->effect_count = (uint8_t)config->fx_size;
     out->hue = data->hue_offset;
     out->speed = data->speed_step;
+    out->rotation = data->rotation;
 
     return 0;
 }
@@ -515,7 +533,7 @@ static void fx_control_group_sync_work_cb(struct k_work *work) {
     struct zmk_behavior_binding binding = {
         .behavior_dev = "rgbsync",
         .param1 = FX_SYNC_PACK(data->active, data->current_fx_idx, zmk_rgb_fx_hue_offset,
-                               zmk_rgb_fx_speed_get(), data->brightness),
+                               zmk_rgb_fx_speed_get(), data->brightness, data->rotation),
     };
     struct zmk_behavior_binding_event event = {
         .position = 0,
@@ -563,15 +581,16 @@ static int fx_sync_on_pressed(struct zmk_behavior_binding *binding,
     uint16_t hue = FX_SYNC_HUE(p) % 360;
     uint8_t speed = FX_SYNC_SPEED(p);
     uint8_t brightness = CLAMP(FX_SYNC_BRT(p), 1, config->brightness_steps);
+    uint8_t rotation = FX_SYNC_ROT(p);
 
     if (active == data->active && idx == data->current_fx_idx &&
         hue == zmk_rgb_fx_hue_offset && speed == zmk_rgb_fx_speed_get() &&
-        brightness == data->brightness) {
+        brightness == data->brightness && rotation == data->rotation) {
         return ZMK_BEHAVIOR_OPAQUE; /* already in sync: don't wear flash */
     }
 
-    LOG_INF("rgbsync: active=%d idx=%d hue=%d speed=%d brt=%d", (int)active, (int)idx, (int)hue,
-            (int)speed, (int)brightness);
+    LOG_INF("rgbsync: active=%d idx=%d hue=%d speed=%d brt=%d rot=%d", (int)active, (int)idx,
+            (int)hue, (int)speed, (int)brightness, (int)rotation);
 
     data->active = active;
     data->brightness = brightness;
@@ -579,6 +598,8 @@ static int fx_sync_on_pressed(struct zmk_behavior_binding *binding,
     data->hue_offset = hue;
     zmk_rgb_fx_speed_set(speed);
     data->speed_step = speed;
+    data->rotation = rotation;
+    zmk_rgb_fx_rotation_set(rotation);
     fx_control_group_set_idx(dev, idx);
     fx_control_group_refresh(dev);
     zmk_rgb_fx_request_frames(1);

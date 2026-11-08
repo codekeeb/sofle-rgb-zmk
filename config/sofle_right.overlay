@@ -147,10 +147,28 @@
         duration = <1200>;
     };
 
+    /* Static: one fixed color, picked with the global hue (red at 0). */
+    fx_static: fx_static {
+        compatible = "zmk,rgb-fx-solid";
+        pixels = <0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35>;
+        colors = <HSL(0, 100, 50)>;
+    };
+
+    /* Digital rain down the key columns; turns with the global rotation. */
+    fx_matrix: fx_matrix {
+        compatible = "zmk,rgb-fx-matrix";
+        pixels = <0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35>;
+        color = <HSL(120, 100, 45)>;
+        head-color = <HSL(120, 100, 85)>;
+        trail = <55>;
+        column-width = <19>;
+    };
+
     fx_group: fx_group {
         compatible = "zmk,rgb-fx-control-group";
         fx = <&fx_gradient &fx_ripple &fx_sparkle &fx_solid
-              &fx_fire &fx_ocean &fx_gold &fx_pink &fx_sunset &fx_heatmap>;
+              &fx_fire &fx_ocean &fx_gold &fx_pink &fx_sunset &fx_heatmap
+              &fx_static &fx_matrix>;
         brightness-steps = <5>;
     };
 };

@@ -113,6 +113,7 @@ static const struct behavior_parameter_value_metadata param1_values[] = {
     RGBFX_VAL("Hue down", RGB_FX_CMD_HUE_DOWN),
     RGBFX_VAL("Faster", RGB_FX_CMD_SPEED_UP),
     RGBFX_VAL("Slower", RGB_FX_CMD_SPEED_DOWN),
+    RGBFX_VAL("Rotate 90", RGB_FX_CMD_ROTATE),
     RGBFX_VAL("Next zone", RGB_FX_CMD_NEXT_CONTROL_ZONE),
     RGBFX_VAL("Previous zone", RGB_FX_CMD_PREVIOUS_CONTROL_ZONE),
     {

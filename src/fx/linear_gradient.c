@@ -44,17 +44,32 @@ static void fx_linear_gradient_render_frame(const struct device *dev, struct rgb
 
     uint16_t color_width = config->gradient_width / config->num_colors;
 
-    for (size_t i = 0; i < config->pixel_map_size; ++i) {
-        // Relying on properties of 2D graph rotation to calculate the distance for each pixel along the gradient axis
-        // https://en.wikipedia.org/wiki/Rotation_of_axes_in_two_dimensions
-        float x = pixels[pixel_map[i]].position_x * cos(config->angle) + pixels[pixel_map[i]].position_y * sin(config->angle);
-        float distance = config->gradient_width + x - data->offset;
+    /* CODEKEEB: `angle` is documented in degrees, but upstream passed it
+     * straight to cos()/sin(), which take radians -- only 0 came out right
+     * (Fire's "90" actually ran at about 117 degrees). Converted here, plus
+     * the global rotation in quarter turns. */
+    float radians = ((float)config->angle + 90.0f * (float)zmk_rgb_fx_rotation_get()) *
+                    (3.14159265f / 180.0f);
+    float cos_a = cosf(radians);
+    float sin_a = sinf(radians);
+    float width = (float)config->gradient_width;
 
-        while (distance >= config->gradient_width) { 
-            distance -= config->gradient_width;
+    for (size_t i = 0; i < config->pixel_map_size; ++i) {
+        // Distance of each pixel along the gradient axis (2D rotation of axes)
+        // https://en.wikipedia.org/wiki/Rotation_of_axes_in_two_dimensions
+        float x = pixels[pixel_map[i]].position_x * cos_a + pixels[pixel_map[i]].position_y * sin_a;
+
+        /* Wrapped into [0, width). Upstream only subtracted, which broke as
+         * soon as the projection went negative -- any angle past 90. */
+        float distance = fmodf(x - data->offset, width);
+        if (distance < 0) {
+            distance += width;
         }
 
         uint8_t from = distance / color_width;
+        if (from >= config->num_colors) {
+            from = config->num_colors - 1; /* width not a multiple of the color count */
+        }
         uint8_t to = (from + 1) % config->num_colors;
 
         float step = (float)(distance - (from * color_width)) / (float)color_width;

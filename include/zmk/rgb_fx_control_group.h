@@ -24,6 +24,7 @@
 #define RGB_FX_CMD_HUE_UP 8
 #define RGB_FX_CMD_HUE_DOWN 9
 #define RGB_FX_CMD_PREVIOUS_CONTROL_ZONE 7
+#define RGB_FX_CMD_ROTATE 12
 
 /* CODEKEEB: absolute setters, for ZMK Studio. The commands above are all
  * relative (next, brighten, hue up...), which is what a key press needs,
@@ -35,6 +36,7 @@
 #define RGB_FX_CMD_SET_HUE 21   /* param = hue / 2, to fit 0..179 in a byte */
 #define RGB_FX_CMD_SET_SPEED 22
 #define RGB_FX_CMD_SET_ACTIVE 23
+#define RGB_FX_CMD_SET_ROTATION 24 /* param = quarter turns, 0..3 */
 
 int zmk_rgb_fx_control_handle_command(const struct device *dev, uint8_t command, uint8_t param);
 
@@ -52,6 +54,7 @@ struct zmk_rgb_fx_state {
     uint8_t effect_count;
     uint16_t hue;            /* 0..359 */
     uint8_t speed;           /* 0..4 */
+    uint8_t rotation;        /* 0..3 quarter turns */
 };
 
 int zmk_rgb_fx_control_get_state(const struct device *dev, struct zmk_rgb_fx_state *out);
@@ -72,6 +75,7 @@ struct zmk_rgb_fx_set {
     int16_t effect;
     int16_t hue;         /* 0..359 */
     int16_t speed;
+    int16_t rotation;    /* 0..3 */
 };
 
 int zmk_rgb_fx_control_apply(const struct device *dev, const struct zmk_rgb_fx_set *set);

@@ -56,6 +56,13 @@ static void fx_solid_render_frame(const struct device *dev, struct rgb_fx_pixel 
     const struct fx_solid_config *config = dev->config;
     struct fx_solid_data *data = dev->data;
 
+    /* CODEKEEB: a single color is the static mode, tinted by the global
+     * hue. The RGB used to be computed once at init, so changing the hue
+     * never reached it -- recomputed on every (requested) frame instead. */
+    if (config->num_colors == 1) {
+        zmk_hsl_to_rgb(&config->colors[0], &data->current_rgb);
+    }
+
     for (size_t i = 0; i < config->pixel_map_size; ++i) {
         pixels[config->pixel_map[i]].value = data->current_rgb;
     }

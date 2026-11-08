@@ -99,6 +99,11 @@ extern uint16_t zmk_rgb_fx_hue_offset;
 uint8_t zmk_rgb_fx_speed_get(void);
 void zmk_rgb_fx_speed_set(uint8_t step);
 
+/* Global rotation of the directional effects (gradients, matrix), in
+ * quarter turns: 0..3 = 0, 90, 180, 270 degrees. */
+uint8_t zmk_rgb_fx_rotation_get(void);
+void zmk_rgb_fx_rotation_set(uint8_t quarter_turns);
+
 /* Per-layer tint (layer_color.c): paints the whole frame with the active
  * layer color (lower/raise); no-op on the base layer. */
 struct rgb_fx_pixel;

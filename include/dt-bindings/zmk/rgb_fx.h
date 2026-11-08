@@ -39,6 +39,7 @@
 #define RGBFX_CMD_HUE_DOWN 9
 #define RGBFX_CMD_SPEED_UP 10
 #define RGBFX_CMD_SPEED_DOWN 11
+#define RGBFX_CMD_ROTATE 12
 
 /**
  * Generic animation command macro
@@ -66,3 +67,8 @@
 #define RGBFX_HUE_DOWN(zone) RGBFX_CONTROL_CMD(RGBFX_CMD_HUE_DOWN, zone, 0)
 #define RGBFX_SPD_UP(zone) RGBFX_CONTROL_CMD(RGBFX_CMD_SPEED_UP, zone, 0)
 #define RGBFX_SPD_DOWN(zone) RGBFX_CONTROL_CMD(RGBFX_CMD_SPEED_DOWN, zone, 0)
+
+/**
+ * Rotate the directional effects (gradients, matrix) a quarter turn.
+ */
+#define RGBFX_ROTATE(zone) RGBFX_CONTROL_CMD(RGBFX_CMD_ROTATE, zone, 0)

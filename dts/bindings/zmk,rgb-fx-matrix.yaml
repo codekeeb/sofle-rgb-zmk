@@ -1,0 +1,35 @@
+# Copyright (c) 2026 CodeKeeb
+# SPDX-License-Identifier: MIT
+
+description: |
+  Digital rain: drops with a bright head and a fading trail fall down the
+  key columns. Follows the global rotation, hue and speed.
+
+compatible: "zmk,rgb-fx-matrix"
+
+include: rgb-fx-base.yaml
+
+properties:
+  color:
+    type: int
+    required: true
+    description: |
+      Trail color in HSL format.
+
+  head-color:
+    type: int
+    required: true
+    description: |
+      Color of the leading drop in HSL format, usually a lighter tint.
+
+  trail:
+    type: int
+    default: 55
+    description: |
+      Length of the trail in position units (a key is about 19).
+
+  column-width:
+    type: int
+    default: 19
+    description: |
+      Pixels closer than this across the fall direction share a column.

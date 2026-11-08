@@ -85,6 +85,7 @@ static zmk_studio_Response get_lighting(const zmk_studio_Request *req) {
         state.effect_count = rgb.effect_count;
         state.hue = rgb.hue;
         state.speed = rgb.speed;
+        state.rotation = rgb.rotation;
     }
 #endif
 
@@ -125,6 +126,7 @@ static zmk_studio_Response set_rgb(const zmk_studio_Request *req) {
         .effect = r->has_effect ? (int16_t)r->effect : -1,
         .hue = r->has_hue ? (int16_t)(r->hue % 360) : -1,
         .speed = r->has_speed ? (int16_t)r->speed : -1,
+        .rotation = r->has_rotation ? (int16_t)(r->rotation & 0x3) : -1,
     };
 
     return LIGHTING_RESPONSE(set_rgb, zmk_rgb_fx_control_apply(dev, &set) == 0);

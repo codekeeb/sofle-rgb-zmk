@@ -96,6 +96,12 @@ void zmk_rgb_fx_speed_set(uint8_t step) {
     fx_speed_step = step;
 }
 
+static uint8_t fx_rotation = 0;
+
+uint8_t zmk_rgb_fx_rotation_get(void) { return fx_rotation; }
+
+void zmk_rgb_fx_rotation_set(uint8_t quarter_turns) { fx_rotation = quarter_turns & 0x3; }
+
 /**
  * Conditional implementation of zmk_rgb_fx_get_pixel_by_key_position
  * if key-pixels is set.
