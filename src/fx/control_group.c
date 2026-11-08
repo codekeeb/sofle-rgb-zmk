@@ -213,9 +213,14 @@ int zmk_rgb_fx_control_handle_command(const struct device *dev, uint8_t command,
 
     switch (command) {
     case RGB_FX_CMD_TOGGLE:
-        /* Turning it back on keeps the saved brightness (it used to drop to
-         * the 10% step every time). */
         data->active = !data->active;
+
+        if (data->active) {
+            /* Manual power-on: brightness always starts at the 10% step
+             * (wanted that way; the encoder raises it afterwards). The
+             * effect, hue, speed and rotation do come back as saved. */
+            data->brightness = 1;
+        }
         break;
     /* Upstream didn't stop the outgoing effect nor start the incoming one
      * on change (NEXT/PREVIOUS/SELECT): set_idx handles both. */
