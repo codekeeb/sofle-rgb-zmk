@@ -213,13 +213,9 @@ int zmk_rgb_fx_control_handle_command(const struct device *dev, uint8_t command,
 
     switch (command) {
     case RGB_FX_CMD_TOGGLE:
+        /* Turning it back on keeps the saved brightness (it used to drop to
+         * the 10% step every time). */
         data->active = !data->active;
-
-        if (data->active) {
-            /* Manual power-on: brightness defaults back to the 10% step
-             * (the encoder can raise it afterwards). */
-            data->brightness = 1;
-        }
         break;
     /* Upstream didn't stop the outgoing effect nor start the incoming one
      * on change (NEXT/PREVIOUS/SELECT): set_idx handles both. */
@@ -489,7 +485,10 @@ static const struct rgb_fx_api fx_control_group_api = {
     }                                                                                              \
                                                                                                    \
     static struct settings_handler fx_control_group_##idx##_settings_handler = {                   \
-        .name = "fx_control_group_"#idx,                                                           \
+        /* Must match the path the state is SAVED under, "<dev->name>/state". */ \
+        /* It was "fx_control_group_<n>" while saves went to "fx_group/state", */ \
+        /* so nothing saved was ever loaded back after a power cycle. */          \
+        .name = DEVICE_DT_NAME(DT_DRV_INST(idx)),                                                  \
         .h_set = fx_control_group_##idx##_load_settings,                                           \
     };                                                                                             \
                                                                                                    \
