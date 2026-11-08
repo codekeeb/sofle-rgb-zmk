@@ -2,6 +2,12 @@
 # SPDX-License-Identifier: MIT
 
 properties:
+  display-name:
+    type: string
+    description: |
+      Short name shown on the peripheral screen when the effect is picked
+      (at most 8 letters fit the Sofle's OLED).
+
   pixels:
     type: array
     required: true

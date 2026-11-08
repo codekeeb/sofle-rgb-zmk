@@ -26,9 +26,18 @@
 #include <zmk/split/central.h>
 #endif
 
+/* The peripheral names the newly picked effect on its screen for a
+ * moment (zmk-nice-oled, widgets/toast.c). */
+#if IS_ENABLED(CONFIG_NICE_OLED_TOAST)
+#include <nice_oled/toast.h>
+#define FX_TOAST_MS 1500
+#endif
+
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
 #define PHANDLE_TO_DEVICE(node_id, prop, idx) DEVICE_DT_GET(DT_PHANDLE_BY_IDX(node_id, prop, idx)),
+#define PHANDLE_TO_NAME(node_id, prop, idx)                                                        \
+    DT_PROP_OR(DT_PHANDLE_BY_IDX(node_id, prop, idx), display_name, ""),
 
 struct fx_control_group_work_context {
     const struct device *control_group;
@@ -37,6 +46,7 @@ struct fx_control_group_work_context {
 
 struct fx_control_group_config {
     const struct device **fx;
+    const char *const *fx_names;
     const size_t fx_size;
     const uint8_t brightness_steps;
     struct fx_control_group_work_context *work;
@@ -478,6 +488,9 @@ static const struct rgb_fx_api fx_control_group_api = {
     static const struct device *fx_control_group_##idx##_fx[] = {                                  \
         DT_INST_FOREACH_PROP_ELEM(idx, fx, PHANDLE_TO_DEVICE)};                                    \
                                                                                                    \
+    static const char *const fx_control_group_##idx##_fx_names[] = {                               \
+        DT_INST_FOREACH_PROP_ELEM(idx, fx, PHANDLE_TO_NAME)};                                      \
+                                                                                                   \
     static struct fx_control_group_work_context fx_control_group_##idx##_work = {                  \
         .control_group = DEVICE_DT_GET(DT_DRV_INST(idx)),                                          \
     };                                                                                             \
@@ -499,6 +512,7 @@ static const struct rgb_fx_api fx_control_group_api = {
                                                                                                    \
     static const struct fx_control_group_config fx_control_group_##idx##_config = {                \
         .fx = fx_control_group_##idx##_fx,                                                         \
+        .fx_names = fx_control_group_##idx##_fx_names,                                             \
         .fx_size = DT_INST_PROP_LEN(idx, fx),                                                      \
         .brightness_steps = DT_INST_PROP(idx, brightness_steps) - 1,                               \
         .work = &fx_control_group_##idx##_work,                                                    \
@@ -592,6 +606,18 @@ static int fx_sync_on_pressed(struct zmk_behavior_binding *binding,
         brightness == data->brightness && rotation == data->rotation) {
         return ZMK_BEHAVIOR_OPAQUE; /* already in sync: don't wear flash */
     }
+
+#if IS_ENABLED(CONFIG_NICE_OLED_TOAST)
+    /* Name the effect when it changes, or when the lighting comes on --
+     * not on the periodic re-sync, which already returned above. */
+    if (active && (idx != data->current_fx_idx || !data->active)) {
+        const char *name = config->fx_names[idx];
+
+        if (name[0] != '\0') {
+            nice_oled_toast_show("RGB", name, FX_TOAST_MS);
+        }
+    }
+#endif
 
     LOG_INF("rgbsync: active=%d idx=%d hue=%d speed=%d brt=%d rot=%d", (int)active, (int)idx,
             (int)hue, (int)speed, (int)brightness, (int)rotation);
