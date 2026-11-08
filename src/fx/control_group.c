@@ -35,6 +35,8 @@
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
+#define FX_SAVE_DEBOUNCE_MS 3000
+
 #define PHANDLE_TO_DEVICE(node_id, prop, idx) DEVICE_DT_GET(DT_PHANDLE_BY_IDX(node_id, prop, idx)),
 #define PHANDLE_TO_NAME(node_id, prop, idx)                                                        \
     DT_PROP_OR(DT_PHANDLE_BY_IDX(node_id, prop, idx), display_name, ""),
@@ -210,7 +212,10 @@ static int fx_control_group_save_settings(const struct device *dev) {
 
     k_work_cancel_delayable(&ctx->save_work);
 
-    return k_work_reschedule(&ctx->save_work, K_MSEC(CONFIG_ZMK_SETTINGS_SAVE_DEBOUNCE));
+    /* CODEKEEB: not CONFIG_ZMK_SETTINGS_SAVE_DEBOUNCE, which is 60 s: a
+     * change followed by switching the keyboard off within that minute was
+     * never written. 3 s still folds a spun encoder into one flash write. */
+    return k_work_reschedule(&ctx->save_work, K_MSEC(FX_SAVE_DEBOUNCE_MS));
 }
 #endif /* IS_ENABLED(CONFIG_SETTINGS) */
 
