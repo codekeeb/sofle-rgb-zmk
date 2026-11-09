@@ -137,6 +137,22 @@ static void fx_control_group_set_idx(const struct device *dev, size_t idx) {
     }
 }
 
+/* Restart the running effect from its first frame. Done on a rotation so
+ * both halves begin the turned pattern in step: each half animates on its
+ * own clock, and without it each kept its old phase and looked turned a
+ * different way. */
+static void fx_control_group_restart(const struct device *dev) {
+    const struct fx_control_group_config *config = dev->config;
+    const struct fx_control_group_data *data = dev->data;
+
+    if (!fx_running) {
+        return;
+    }
+
+    rgb_fx_stop(config->fx[data->current_fx_idx]);
+    rgb_fx_start(config->fx[data->current_fx_idx]);
+}
+
 /* Packed absolute state carried in the rgbsync behavior's param1. */
 #define FX_SYNC_PACK(active, idx, hue, speed, brt, rot)                                                (((active) ? 1 : 0) | (((uint32_t)(idx) & 0x1f) << 1) |                                             ((((uint32_t)(hue) / 20) & 0x1f) << 6) | (((uint32_t)(speed) & 0x7) << 11) |                       (((uint32_t)(brt) & 0x7) << 14) | (((uint32_t)(rot) & 0x3) << 17))
 #define FX_SYNC_ACTIVE(p) ((p) & 0x1)
@@ -276,10 +292,12 @@ int zmk_rgb_fx_control_handle_command(const struct device *dev, uint8_t command,
     case RGB_FX_CMD_ROTATE:
         data->rotation = (data->rotation + 1) & 0x3;
         zmk_rgb_fx_rotation_set(data->rotation);
+        fx_control_group_restart(dev);
         break;
     case RGB_FX_CMD_SET_ROTATION:
         data->rotation = param & 0x3;
         zmk_rgb_fx_rotation_set(data->rotation);
+        fx_control_group_restart(dev);
         break;
     case RGB_FX_CMD_DIM:
         /* Minimum 1: turning off is the TOGGLE's job. A persisted brightness 0
@@ -381,9 +399,10 @@ int zmk_rgb_fx_control_apply(const struct device *dev, const struct zmk_rgb_fx_s
         data->speed_step = zmk_rgb_fx_speed_get();
     }
 
-    if (set->rotation >= 0) {
+    if (set->rotation >= 0 && (set->rotation & 0x3) != data->rotation) {
         data->rotation = set->rotation & 0x3;
         zmk_rgb_fx_rotation_set(data->rotation);
+        fx_control_group_restart(dev);
     }
 
     fx_control_group_refresh(dev);
@@ -547,9 +566,11 @@ DT_INST_FOREACH_STATUS_OKAY(FX_CONTROL_GROUP_DEVICE);
  * command ever being replayed. */
 #if IS_ENABLED(CONFIG_ZMK_SPLIT_ROLE_CENTRAL) && DT_HAS_CHOSEN(zmk_rgb_fx)
 
-#define FX_SYNC_PERIOD K_SECONDS(15)
+/* Was 15 s: a lost push left the halves out of step that long. The
+ * peripheral ignores a push that changes nothing, so this costs no flash. */
+#define FX_SYNC_PERIOD K_SECONDS(5)
 
-static void fx_control_group_sync_work_cb(struct k_work *work) {
+static void fx_control_group_sync_send(void) {
     const struct device *dev = DEVICE_DT_GET(DT_CHOSEN(zmk_rgb_fx));
     const struct fx_control_group_data *data = dev->data;
 
@@ -566,6 +587,10 @@ static void fx_control_group_sync_work_cb(struct k_work *work) {
     for (uint8_t source = 0; source < ZMK_SPLIT_CENTRAL_PERIPHERAL_COUNT; source++) {
         zmk_split_central_invoke_behavior(source, &binding, event, true);
     }
+}
+
+static void fx_control_group_sync_work_cb(struct k_work *work) {
+    fx_control_group_sync_send();
 
     struct k_work_delayable *dwork = k_work_delayable_from_work(work);
     k_work_reschedule(dwork, FX_SYNC_PERIOD);
@@ -573,7 +598,16 @@ static void fx_control_group_sync_work_cb(struct k_work *work) {
 
 static K_WORK_DELAYABLE_DEFINE(fx_sync_work, fx_control_group_sync_work_cb);
 
-static void fx_control_group_sync_push_now(void) { k_work_reschedule(&fx_sync_work, K_NO_WAIT); }
+/* Second copy of every change, shortly after the first: a push dropped on
+ * the split link no longer waits for the periodic one. */
+static void fx_control_group_sync_retry_cb(struct k_work *work) { fx_control_group_sync_send(); }
+
+static K_WORK_DELAYABLE_DEFINE(fx_sync_retry_work, fx_control_group_sync_retry_cb);
+
+static void fx_control_group_sync_push_now(void) {
+    k_work_reschedule(&fx_sync_work, K_NO_WAIT);
+    k_work_reschedule(&fx_sync_retry_work, K_MSEC(400));
+}
 
 /* Kick off the periodic push shortly after boot (gives BLE time to link). */
 static int fx_control_group_sync_init(void) {
@@ -633,8 +667,15 @@ static int fx_sync_on_pressed(struct zmk_behavior_binding *binding,
     data->hue_offset = hue;
     zmk_rgb_fx_speed_set(speed);
     data->speed_step = speed;
+    bool rotated = rotation != data->rotation;
+
     data->rotation = rotation;
     zmk_rgb_fx_rotation_set(rotation);
+    if (rotated && idx == data->current_fx_idx) {
+        /* Same restart the central did, so both halves start the turned
+         * pattern from the same phase (a new effect restarts anyway). */
+        fx_control_group_restart(dev);
+    }
     fx_control_group_set_idx(dev, idx);
     fx_control_group_refresh(dev);
     zmk_rgb_fx_request_frames(1);
