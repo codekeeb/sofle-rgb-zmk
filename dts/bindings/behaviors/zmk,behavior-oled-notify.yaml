@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: MIT
+
+description: Internal split relay carrying a notice for the right screen (not for keymaps)
+
+compatible: "zmk,behavior-oled-notify"
+
+include: one_param.yaml

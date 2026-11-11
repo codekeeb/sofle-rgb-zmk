@@ -26,9 +26,10 @@
 #include <zmk/split/central.h>
 #endif
 
-/* The peripheral names the newly picked effect on its screen for a
+/* The peripheral says what each RGB key did on its screen for a
  * moment (zmk-nice-oled, widgets/toast.c). */
 #if IS_ENABLED(CONFIG_NICE_OLED_TOAST)
+#include <string.h>
 #include <nice_oled/toast.h>
 #define FX_TOAST_MS 1500
 #endif
@@ -647,13 +648,34 @@ static int fx_sync_on_pressed(struct zmk_behavior_binding *binding,
     }
 
 #if IS_ENABLED(CONFIG_NICE_OLED_TOAST)
-    /* Name the effect when it changes, or when the lighting comes on --
-     * not on the periodic re-sync, which already returned above. */
-    if (active && (idx != data->current_fx_idx || !data->active)) {
-        const char *name = config->fx_names[idx];
+    /* Say what the key just did, under the animation. One change per
+     * key press, so the first difference found is the one announced; the
+     * periodic re-sync changes nothing and already returned above. */
+    {
+        char msg[12] = "";
 
-        if (name[0] != '\0') {
-            nice_oled_toast_show("RGB", name, FX_TOAST_MS);
+        if (active != data->active) {
+            strcpy(msg, active ? "RGB on" : "RGB off");
+        } else if (!active) {
+            /* settings changed while off (Studio): nothing visible */
+        } else if (idx != data->current_fx_idx) {
+            strncpy(msg, config->fx_names[idx], sizeof(msg) - 1);
+        } else if (rotation != data->rotation) {
+            snprintf(msg, sizeof(msg), "Rot %d", rotation * 90);
+        } else if (hue != zmk_rgb_fx_hue_offset) {
+            snprintf(msg, sizeof(msg), "Hue %d", hue);
+        } else if (brightness != data->brightness) {
+            snprintf(msg, sizeof(msg), "Bri %d%%",
+                     (int)(fx_control_group_brightness_scale(brightness,
+                                                             config->brightness_steps) *
+                               100.0f +
+                           0.5f));
+        } else if (speed != zmk_rgb_fx_speed_get()) {
+            snprintf(msg, sizeof(msg), "Speed %d", speed + 1);
+        }
+
+        if (msg[0] != '\0') {
+            nice_oled_toast_show("RGB", msg, FX_TOAST_MS);
         }
     }
 #endif

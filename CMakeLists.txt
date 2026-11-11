@@ -63,3 +63,9 @@ if(CONFIG_ZMK_BEHAVIOR_SLEEP_CFG)
   target_include_directories(app PRIVATE include)
   target_sources(app PRIVATE src/behaviors/behavior_sleep_cfg.c)
 endif()
+
+# Notices on the right screen (BT profile, BT clear, USB/BLE, Caps Lock,
+# Studio). Each half compiles its own side and drops the other.
+if(CONFIG_ZMK_DISPLAY)
+  target_sources(app PRIVATE src/oled_notify.c)
+endif()
